@@ -71,7 +71,7 @@ export function queryChildren(
 ) {
   const parentCondition = parentId !== null
     ? 'l.parent_id = ?1'
-    : 'l.parent_id IS NULL';
+    : 'l.level = \'country\'';
 
   return db
     .prepare(
