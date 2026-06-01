@@ -35,3 +35,6 @@ lang → en → zh
 ## 缓存策略
 - KV 优先（TTL 24h）→ D1 path_cache 兜底
 - 双写 KV + D1
+
+## 已知问题 & 修复记录
+- **2026-06-01**: 修复 `/geo/search` 接口始终返回空结果的问题。原因：搜索查询了 `location_search` 表，但 `process-geoname.js` 导入脚本从未向该表写入数据（表仅供未来扩展预留）。修复方式：改为直接从 `location_names` 表模糊匹配 `name` 字段。

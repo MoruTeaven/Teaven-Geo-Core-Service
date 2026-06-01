@@ -231,15 +231,17 @@ router.get('/geo/search', async (req: Request, env: Env) => {
   }
 
   try {
-    // 简单搜索实现：使用 location_search 表
+    // 直接从 location_names 模糊搜索名称
+    // location_search 表为未来扩展预留，当前未填充数据
     const stmt = env.DB.prepare(
-      `SELECT DISTINCT ls.location_id, ln.name, l.level, l.country_code
-       FROM location_search ls
-       INNER JOIN location_names ln ON ls.location_id = ln.location_id AND ln.lang = ?2
-       INNER JOIN locations l ON ls.location_id = l.id
-       WHERE ls.token LIKE ?1 AND ls.lang = ?2
+      `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
+       FROM location_names ln
+       INNER JOIN locations l ON ln.location_id = l.id
+       WHERE ln.name LIKE ?1 AND ln.lang = ?2
+         AND l.is_active = 1
+       ORDER BY ln.name ASC
        LIMIT 20`
-    ).bind(`%${q.toLowerCase()}%`, lang);
+    ).bind(`%${q}%`, lang);
 
     const result = await stmt.all();
     return respond({ results: result.results || [], query: q });
