@@ -129,24 +129,28 @@ export async function resolvePath(
     let stmt = queryByNameNorm(db, nameNorm, parentId);
     let result = await stmt.first<{ id: number; level: string; parent_id: number | null }>();
 
-    // 如果精确匹配失败且非第一级，尝试模糊匹配
-    if (!result && i > 0) {
+    // 如果精确匹配失败，尝试模糊匹配（不受 parent_id 约束）
+    if (!result) {
       const fuzzyStmt = queryByNameNormFuzzy(db, nameNorm);
       const fuzzyResult = await fuzzyStmt.all<{
         id: number;
         parent_id: number | null;
         level: string;
       }>();
-      
-      // 在候选列表中找 parent_id 匹配的
+
       if (fuzzyResult.results) {
-        const matched = fuzzyResult.results.find(
-          r => r.parent_id === parentId,
-        );
-        if (matched) {
-          result = matched;
-        } else if (fuzzyResult.results.length === 1) {
-          // 只有一个候选，直接使用
+        if (parentId !== null) {
+          // 非第一级：在候选列表中优先找 parent_id 匹配的
+          const matched = fuzzyResult.results.find(
+            r => r.parent_id === parentId,
+          );
+          if (matched) {
+            result = matched;
+          } else if (fuzzyResult.results.length === 1) {
+            result = fuzzyResult.results[0];
+          }
+        } else {
+          // 第一级 token：直接取第一个候选（通常是最合理的匹配）
           result = fuzzyResult.results[0];
         }
       }

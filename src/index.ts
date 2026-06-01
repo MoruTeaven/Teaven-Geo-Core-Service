@@ -5,7 +5,7 @@
  * 
  * 路由:
  *   GET  /geo/children?parent_id=xxx&lang=zh   - 级联子级查询
- *   POST /geo/resolve                            - 路径反解析
+ *   GET/POST /geo/resolve                         - 路径反解析（支持 query string 和 JSON body）
  *   GET  /geo/get?id=xxx&lang=zh                 - 单点查询
  *   GET  /geo/ancestors?id=xxx&lang=zh           - 父级链（面包屑）
  *   GET  /geo/is-subordinate?descendant=xxx&ancestor=xxx&lang=zh - 从属关系检查
@@ -91,17 +91,11 @@ router.get('/geo/children', async (req: Request, env: Env) => {
 });
 
 // =============================================
-// ② POST /geo/resolve - 路径反解析
+// ② /geo/resolve - 路径反解析 (支持 GET 和 POST)
 // =============================================
-router.post('/geo/resolve', async (req: Request, env: Env) => {
-  let body: { path: string; lang?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return respond({ error: 'Invalid JSON body' }, 400);
-  }
 
-  const { path, lang = env.DEFAULT_LANG || 'zh' } = body;
+// 抽取核心解析逻辑，GET 和 POST 复用
+async function handleResolve(req: Request, env: Env, path: string, lang: string) {
   if (!path || typeof path !== 'string' || path.trim().length === 0) {
     return respond({ error: 'path is required' }, 400);
   }
@@ -112,6 +106,39 @@ router.post('/geo/resolve', async (req: Request, env: Env) => {
   } catch (e: any) {
     return respond({ error: e.message }, 404);
   }
+}
+
+// GET: 从 query string 读取参数
+router.get('/geo/resolve', async (req: Request, env: Env) => {
+  const url = new URL(req.url);
+  const path = url.searchParams.get('path') || '';
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
+  return handleResolve(req, env, path, lang);
+});
+
+// POST: 从 JSON body 读取参数
+router.post('/geo/resolve', async (req: Request, env: Env) => {
+  let path: string;
+  let lang: string;
+
+  const contentType = req.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    let body: { path: string; lang?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return respond({ error: 'Invalid JSON body' }, 400);
+    }
+    path = body.path || '';
+    lang = body.lang || env.DEFAULT_LANG || 'zh';
+  } else {
+    // 也支持 POST form 或 query string
+    const url = new URL(req.url);
+    path = url.searchParams.get('path') || '';
+    lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
+  }
+
+  return handleResolve(req, env, path, lang);
 });
 
 // =============================================
