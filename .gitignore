@@ -13,6 +13,7 @@ data/processed/
 # IDE
 .idea/
 .vscode/
+.codebuddy/
 *.swp
 *.swo
 
@@ -22,3 +23,6 @@ Thumbs.db
 
 # Wrangler
 .wrangler/
+
+# 个人文档（不适合公开）
+docs/

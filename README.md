@@ -2,6 +2,8 @@
 
 全球统一地理路径解析 + 唯一 ID 映射服务，基于 Cloudflare Workers + D1 + KV。
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/MoruTeaven/Teaven-Geo-Core-Service)
+
 ## 核心能力
 
 | 能力 | 说明 |
@@ -133,7 +135,7 @@ POST /geo/resolve
 
 ```json
 {
-  "path": "中国 山东 济南 长清",
+  "path": "中国 山东 菏泽 定陶",
   "lang": "zh"
 }
 ```
@@ -144,7 +146,7 @@ POST /geo/resolve
 {
   "location_id": 123456,
   "level": "admin3",
-  "path_tokens": ["中国", "山东", "济南", "长清"],
+  "path_tokens": ["中国", "山东", "菏泽", "定陶"],
   "cached": false
 }
 ```
@@ -196,8 +198,8 @@ GET /geo/ancestors?id=123456&lang=zh
   "ancestors": [
     { "id": 1814991, "name": "中国", "level": "country" },
     { "id": 1796236, "name": "山东省", "level": "admin1" },
-    { "id": 1804645, "name": "济南市", "level": "admin2" },
-    { "id": 123456, "name": "长清区", "level": "admin3" }
+    { "id": 1799971, "name": "威海市", "level": "admin2" },
+    { "id": 123456, "name": "乳山市", "level": "admin3" }
   ]
 }
 ```
@@ -207,7 +209,7 @@ GET /geo/ancestors?id=123456&lang=zh
 ### ⑤ 搜索（预览）
 
 ```
-GET /geo/search?q=济南&lang=zh
+GET /geo/search?q=定陶&lang=zh
 ```
 
 ### ⑥ 健康检查
@@ -243,7 +245,7 @@ GET /health
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| path_key | TEXT PK | "中国\|山东\|济南\|长清" |
+| path_key | TEXT PK | "中国\|山东\|济南\|莱芜" |
 | location_id | INTEGER | 解析结果 |
 | hit_count | INTEGER | 命中次数 |
 | updated_at | INTEGER | 更新时间戳 |
@@ -308,3 +310,8 @@ teaven-geo-core-service/
 
 本项目使用 [GeoNames](https://www.geonames.org/) 地理数据，遵循
 [Creative Commons Attribution 4.0 (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) 协议。
+
+## 作者
+
+- **主页**: [moruteaven.com](https://moruteaven.com)
+- **邮箱**: [me@moruteaven.com](mailto:me@moruteaven.com)
