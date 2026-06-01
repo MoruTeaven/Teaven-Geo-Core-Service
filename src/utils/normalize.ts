@@ -79,7 +79,7 @@ export function parsePathTokens(path: string): string[] {
  *       由上层服务在返回前做简→繁转换。
  */
 export function resolveLangPriority(preferredLang: string): string[] {
-  const lang = preferredLang?.toLowerCase() || 'en';
+  const lang = preferredLang?.toLowerCase() || 'zh';
   
   // 繁体中文映射：查询时仍用 zh，转换在服务层做
   const isHant = lang === 'zh-hant' || lang === 'zh-tw' || lang === 'zh-hk' || lang === 'zh-mo';

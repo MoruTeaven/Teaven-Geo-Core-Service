@@ -110,15 +110,15 @@ GET /geo/children?parent_id=xxx&lang=zh
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | parent_id | number | 否 | 父节点 ID，为空返回顶级（国家列表） |
-| lang | string | 否 | 语言，默认 `en` |
+| lang | string | 否 | 语言，默认 `zh` |
 
 **响应示例：**
 
 ```json
 {
   "children": [
-    { "id": 1814991, "name": "China", "level": "country" },
-    { "id": 1861060, "name": "Japan", "level": "country" }
+    { "id": 1814991, "name": "中国", "level": "country" },
+    { "id": 1861060, "name": "日本", "level": "country" }
   ]
 }
 ```
@@ -144,7 +144,7 @@ POST /geo/resolve
 
 ```json
 {
-  "location_id": 123456,
+  "location_id": 1812743,
   "level": "admin3",
   "path_tokens": ["中国", "山东", "菏泽", "定陶"],
   "cached": false
@@ -156,13 +156,13 @@ POST /geo/resolve
 ### ③ 单点查询
 
 ```
-GET /geo/get?id=123456&lang=zh
+GET /geo/get?id=1804565&lang=zh
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | id | number | 是 | GeoNames ID |
-| lang | string | 否 | 语言，默认 `en` |
+| lang | string | 否 | 语言，默认 `zh` |
 
 **响应示例：**
 
@@ -188,7 +188,7 @@ GET /geo/get?id=123456&lang=zh
 ### ④ 父级链（面包屑）
 
 ```
-GET /geo/ancestors?id=123456&lang=zh
+GET /geo/ancestors?id=1814990&lang=zh
 ```
 
 **响应示例：**
@@ -199,7 +199,7 @@ GET /geo/ancestors?id=123456&lang=zh
     { "id": 1814991, "name": "中国", "level": "country" },
     { "id": 1796236, "name": "山东省", "level": "admin1" },
     { "id": 1799971, "name": "威海市", "level": "admin2" },
-    { "id": 123456, "name": "乳山市", "level": "admin3" }
+    { "id": 1814990, "name": "乳山市", "level": "admin3" }
   ]
 }
 ```
@@ -250,7 +250,28 @@ GET /health
 | hit_count | INTEGER | 命中次数 |
 | updated_at | INTEGER | 更新时间戳 |
 
-## 性能优化
+## 配置说明
+
+### 环境变量
+
+可在 `wrangler.toml` 的 `[vars]` 段中配置以下变量：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DEFAULT_LANG` | API 默认返回语言 | `zh` |
+| `CACHE_TTL` | KV 缓存过期时间（秒） | `86400` |
+| `HOT_CITIES` | 预热热点城市 | `"北京,上海,东京,New York,London,Paris,Singapore,Sydney"` |
+
+**自定义默认语言示例：**
+
+```toml
+# wrangler.toml
+[vars]
+DEFAULT_LANG = "en"   # 改为英文
+CACHE_TTL = 86400
+```
+
+支持的语言代码：`zh`（简体中文）、`en`（英文）、`ja`（日文）、`zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO`（繁体中文）。<parameter name="explanation" string="true">README 增加配置说明章节，说明 DEFAULT_LANG 自定义方式
 
 1. **KV 缓存优先** - 热点路径秒级返回，TTL 24h
 2. **D1 path_cache 双写** - KV miss 时 D1 兜底
@@ -262,7 +283,7 @@ GET /health
 
 - **主 ID**：必须使用 GeoNames ID（geonameid）
 - **name_norm**：去行政后缀 + 小写 + trim
-- **语言 fallback**：`lang → en → zh`
+- **语言 fallback**：`请求语言 → zh → en → ja`
 - **路径分隔**：支持空格、逗号、竖线等多种分隔符
 
 ## 项目结构

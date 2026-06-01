@@ -13,6 +13,7 @@ binding = "GEO_CACHE"
 id = "aff987c5443c4cf2bcfe61fa8decef8f"
 
 [vars]
+DEFAULT_LANG = "zh"
 CACHE_TTL = 86400
 HOT_CITIES = "北京,上海,东京,New York,London,Paris,Singapore,Sydney"
 

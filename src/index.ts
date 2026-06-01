@@ -29,6 +29,7 @@ export interface Env {
   GEO_CACHE: KVNamespace;
   CACHE_TTL: string;
   HOT_CITIES: string;
+  DEFAULT_LANG: string;
 }
 
 // =============================================
@@ -72,7 +73,7 @@ router.get('/health', async (_req: Request, env: Env) => {
 router.get('/geo/children', async (req: Request, env: Env) => {
   const url = new URL(req.url);
   const parentIdStr = url.searchParams.get('parent_id');
-  const lang = url.searchParams.get('lang') || 'en';
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
 
   // parent_id 为空时返回顶级（国家列表）
   const parentId = parentIdStr ? parseInt(parentIdStr, 10) : null;
@@ -99,7 +100,7 @@ router.post('/geo/resolve', async (req: Request, env: Env) => {
     return respond({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { path, lang = 'en' } = body;
+  const { path, lang = env.DEFAULT_LANG || 'zh' } = body;
   if (!path || typeof path !== 'string' || path.trim().length === 0) {
     return respond({ error: 'path is required' }, 400);
   }
@@ -118,7 +119,7 @@ router.post('/geo/resolve', async (req: Request, env: Env) => {
 router.get('/geo/get', async (req: Request, env: Env) => {
   const url = new URL(req.url);
   const idStr = url.searchParams.get('id');
-  const lang = url.searchParams.get('lang') || 'en';
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
 
   if (!idStr) {
     return respond({ error: 'id is required' }, 400);
@@ -143,7 +144,7 @@ router.get('/geo/get', async (req: Request, env: Env) => {
 router.get('/geo/ancestors', async (req: Request, env: Env) => {
   const url = new URL(req.url);
   const idStr = url.searchParams.get('id');
-  const lang = url.searchParams.get('lang') || 'en';
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
 
   if (!idStr) {
     return respond({ error: 'id is required' }, 400);
@@ -168,7 +169,7 @@ router.get('/geo/ancestors', async (req: Request, env: Env) => {
 router.get('/geo/search', async (req: Request, env: Env) => {
   const url = new URL(req.url);
   const q = url.searchParams.get('q');
-  const lang = url.searchParams.get('lang') || 'en';
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
 
   if (!q || q.trim().length === 0) {
     return respond({ error: 'q is required' }, 400);

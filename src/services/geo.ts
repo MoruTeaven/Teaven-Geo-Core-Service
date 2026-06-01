@@ -37,7 +37,7 @@ import { kvGet, kvSet, type CacheEntry } from '../utils/cache';
 export async function getChildren(
   db: D1Database,
   parentId: number | null,
-  lang: string = 'en',
+  lang: string = 'zh',
 ): Promise<{ children: ChildResult[] }> {
   // zh-Hant 请求时，用 zh 数据查询
   const queryLang = isTraditionalChinese(lang) ? 'zh' : lang;
@@ -72,7 +72,7 @@ export async function resolvePath(
   db: D1Database,
   kv: KVNamespace,
   path: string,
-  lang: string = 'en',
+  lang: string = 'zh',
 ): Promise<ResolveResult> {
   // 预处理路径
   const tokens = parsePathTokens(path);
@@ -211,7 +211,7 @@ export interface GetResult {
 export async function getLocation(
   db: D1Database,
   id: number,
-  preferredLang: string = 'en',
+  preferredLang: string = 'zh',
 ): Promise<GetResult> {
   const stmt = queryLocationById(db, id);
   const result = await stmt.first<{
@@ -273,7 +273,7 @@ export async function getLocation(
 export async function getAncestors(
   db: D1Database,
   id: number,
-  lang: string = 'en',
+  lang: string = 'zh',
 ): Promise<Array<{ id: number; name: string; level: string }>> {
   const ancestors: Array<{ id: number; name: string; level: string }> = [];
   let currentId: number | null = id;
