@@ -1,0 +1,24 @@
+# 依赖
+node_modules/
+dist/
+
+# 数据文件（太大，不纳入版本控制）
+data/raw/
+data/processed/
+
+# 环境变量
+.env
+.dev.vars
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Wrangler
+.wrangler/

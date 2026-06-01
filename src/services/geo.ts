@@ -1,0 +1,286 @@
+/**
+ * 地理业务服务层
+ * 
+ * 核心逻辑：
+ * 1. 级联子级查询
+ * 2. 路径反向解析（path → location_id）
+ * 3. 单点详情查询
+ * 4. 多语言 fallback
+ */
+
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import {
+  queryChildren,
+  queryLocationById,
+  queryByNameNorm,
+  queryByNameNormFuzzy,
+  queryPathCache,
+  upsertPathCache,
+  queryNameByLang,
+  type ChildResult,
+  type LocationDetail,
+} from '../db/queries';
+import {
+  normalizeName,
+  buildPathKey,
+  parsePathTokens,
+  resolveLangPriority,
+} from '../utils/normalize';
+import { kvGet, kvSet, type CacheEntry } from '../utils/cache';
+
+// =============================================
+// ① 获取子级（级联选择）
+// =============================================
+
+export async function getChildren(
+  db: D1Database,
+  parentId: number | null,
+  lang: string = 'en',
+): Promise<{ children: ChildResult[] }> {
+  const stmt = queryChildren(db, parentId, lang);
+  const result = await stmt.all<ChildResult>();
+  return { children: result.results || [] };
+}
+
+// =============================================
+// ② 路径解析（核心）
+// =============================================
+
+export interface ResolveResult {
+  location_id: number;
+  level: string;
+  path_tokens: string[];
+  cached: boolean;
+}
+
+export async function resolvePath(
+  db: D1Database,
+  kv: KVNamespace,
+  path: string,
+  lang: string = 'en',
+): Promise<ResolveResult> {
+  // 预处理路径
+  const tokens = parsePathTokens(path);
+  if (tokens.length === 0) {
+    throw new Error('Empty path');
+  }
+
+  const pathKey = buildPathKey(tokens);
+
+  // Step 1: 查 KV 缓存
+  const kvEntry = await kvGet(kv, pathKey);
+  if (kvEntry) {
+    return {
+      location_id: kvEntry.location_id,
+      level: kvEntry.level,
+      path_tokens: tokens,
+      cached: true,
+    };
+  }
+
+  // Step 2: 查 D1 path_cache
+  const cacheStmt = queryPathCache(db, pathKey);
+  const cacheResult = await cacheStmt.first<{ location_id: number }>();
+  if (cacheResult) {
+    // 回写 KV
+    const locStmt = queryLocationById(db, cacheResult.location_id);
+    const loc = await locStmt.first<{ level: string }>();
+    if (loc) {
+      await kvSet(kv, pathKey, {
+        location_id: cacheResult.location_id,
+        level: loc.level,
+        cached_at: Date.now(),
+      });
+    }
+    return {
+      location_id: cacheResult.location_id,
+      level: loc?.level || 'unknown',
+      path_tokens: tokens,
+      cached: true,
+    };
+  }
+
+  // Step 3: 逐级匹配
+  const normalizedTokens = tokens.map(normalizeName);
+  let parentId: number | null = null;
+  let lastId: number | null = null;
+  let lastLevel: string = 'unknown';
+
+  for (let i = 0; i < normalizedTokens.length; i++) {
+    const nameNorm = normalizedTokens[i];
+
+    // 精确匹配
+    let stmt = queryByNameNorm(db, nameNorm, parentId);
+    let result = await stmt.first<{ id: number; level: string; parent_id: number | null }>();
+
+    // 如果精确匹配失败且非第一级，尝试模糊匹配
+    if (!result && i > 0) {
+      const fuzzyStmt = queryByNameNormFuzzy(db, nameNorm);
+      const fuzzyResult = await fuzzyStmt.all<{
+        id: number;
+        parent_id: number | null;
+        level: string;
+      }>();
+      
+      // 在候选列表中找 parent_id 匹配的
+      if (fuzzyResult.results) {
+        const matched = fuzzyResult.results.find(
+          r => r.parent_id === parentId,
+        );
+        if (matched) {
+          result = matched;
+        } else if (fuzzyResult.results.length === 1) {
+          // 只有一个候选，直接使用
+          result = fuzzyResult.results[0];
+        }
+      }
+    }
+
+    if (!result) {
+      // 部分匹配：返回最后匹配到的节点
+      if (lastId !== null) {
+        break;
+      }
+      throw new Error(`Cannot resolve token: "${tokens[i]}" (normalized: "${nameNorm}")`);
+    }
+
+    parentId = result.id;
+    lastId = result.id;
+    lastLevel = result.level;
+  }
+
+  if (lastId === null) {
+    throw new Error('Path resolution failed');
+  }
+
+  // Step 4: 写入缓存（双写 KV + D1）
+  const cacheEntry: CacheEntry = {
+    location_id: lastId,
+    level: lastLevel,
+    cached_at: Date.now(),
+  };
+
+  // 异步双写，不阻塞响应
+  await Promise.allSettled([
+    kvSet(kv, pathKey, cacheEntry),
+    upsertPathCache(db, pathKey, lastId).run(),
+  ]);
+
+  return {
+    location_id: lastId,
+    level: lastLevel,
+    path_tokens: tokens,
+    cached: false,
+  };
+}
+
+// =============================================
+// ③ 单点查询
+// =============================================
+
+export interface GetResult {
+  id: number;
+  parent_id: number | null;
+  level: string;
+  country_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  name: string;
+  names: {
+    zh: string | null;
+    en: string | null;
+    ja: string | null;
+  };
+}
+
+export async function getLocation(
+  db: D1Database,
+  id: number,
+  preferredLang: string = 'en',
+): Promise<GetResult> {
+  const stmt = queryLocationById(db, id);
+  const result = await stmt.first<{
+    id: number;
+    parent_id: number | null;
+    level: string;
+    country_code: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    name_zh: string | null;
+    name_en: string | null;
+    name_ja: string | null;
+  }>();
+
+  if (!result) {
+    throw new Error(`Location not found: ${id}`);
+  }
+
+  // 按优先级选择显示名称
+  const langPriority = resolveLangPriority(preferredLang);
+  let displayName = result.name_en || result.name_zh || '';
+  for (const lang of langPriority) {
+    const nameMap: Record<string, string | null> = {
+      zh: result.name_zh,
+      en: result.name_en,
+      ja: result.name_ja,
+    };
+    if (nameMap[lang]) {
+      displayName = nameMap[lang]!;
+      break;
+    }
+  }
+
+  return {
+    id: result.id,
+    parent_id: result.parent_id,
+    level: result.level,
+    country_code: result.country_code,
+    latitude: result.latitude,
+    longitude: result.longitude,
+    name: displayName,
+    names: {
+      zh: result.name_zh,
+      en: result.name_en,
+      ja: result.name_ja,
+    },
+  };
+}
+
+// =============================================
+// ④ 获取父级链（面包屑）
+// =============================================
+
+export async function getAncestors(
+  db: D1Database,
+  id: number,
+  lang: string = 'en',
+): Promise<Array<{ id: number; name: string; level: string }>> {
+  const ancestors: Array<{ id: number; name: string; level: string }> = [];
+  let currentId: number | null = id;
+
+  while (currentId !== null) {
+    const locStmt = queryLocationById(db, currentId);
+    const loc = await locStmt.first<{
+      id: number;
+      parent_id: number | null;
+      level: string;
+      name_zh: string | null;
+      name_en: string | null;
+      name_ja: string | null;
+    }>();
+
+    if (!loc) break;
+
+    const nameMap: Record<string, string | null> = {
+      zh: loc.name_zh,
+      en: loc.name_en,
+      ja: loc.name_ja,
+    };
+    const name = nameMap[lang] || loc.name_en || loc.name_zh || '';
+
+    ancestors.unshift({ id: loc.id, name, level: loc.level });
+    currentId = loc.parent_id;
+  }
+
+  return ancestors;
+}

@@ -1,0 +1,20 @@
+name = "teaven-geo-core-service"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "teaven-geo-db"
+database_id = "{{YOUR_D1_DATABASE_ID}}"
+
+[[kv_namespaces]]
+binding = "GEO_CACHE"
+id = "{{YOUR_KV_NAMESPACE_ID}}"
+
+[vars]
+CACHE_TTL = 86400
+HOT_CITIES = "北京,上海,东京,New York,London,Paris,Singapore,Sydney"
+
+[observability]
+enabled = true

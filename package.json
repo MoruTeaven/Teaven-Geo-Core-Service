@@ -1,0 +1,21 @@
+{
+  "name": "teaven-geo-core-service",
+  "version": "1.0.0",
+  "description": "全球统一地理服务 - Cloudflare Worker + D1 + GeoNames",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create teaven-geo-db",
+    "db:migrate": "wrangler d1 execute teaven-geo-db --file=./db/migrations/001_init.sql",
+    "db:migrate:local": "wrangler d1 execute teaven-geo-db --local --file=./db/migrations/001_init.sql",
+    "db:seed": "node scripts/import-geoname.js",
+    "kv:create": "wrangler kv:namespace create GEO_CACHE"
+  },
+  "dependencies": {
+    "itty-router": "^5.0.18"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}
