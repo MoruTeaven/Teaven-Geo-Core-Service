@@ -16,7 +16,7 @@
 import { AutoRouter, cors, json } from 'itty-router';
 import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate } from './services/geo';
 import { corsPreflight } from './utils/response';
-import { normalizeName } from './utils/normalize';
+import { normalizeSearchTerm } from './utils/normalize';
 
 // itty-router v5 的 json(data, init) 要求 init 为 ResponseInit 对象
 // 封装一个接受纯 statusCode 的便捷函数
@@ -232,19 +232,21 @@ router.get('/geo/search', async (req: Request, env: Env) => {
   }
 
   try {
-    // 归一化搜索关键词（去掉行政后缀如"市"、"区"等），与数据中的 name_norm 匹配
-    const qNorm = normalizeName(q);
-    // 同时用原始关键词和归一化关键词搜索 name 和 name_norm
+    // 轻量归一化搜索词：仅去行政后缀 + 小写（zh/en/ja 三语通用），保留所有语言文字字符
+    const qNorm = normalizeSearchTerm(q);
+    // 分层匹配：name_norm 精确匹配优先 → name 前缀匹配兜底，避免全模糊 LIKE 返回过多噪音
     const stmt = env.DB.prepare(
       `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
        FROM location_names ln
        INNER JOIN locations l ON ln.location_id = l.id
-       WHERE (ln.name LIKE ?1 OR ln.name_norm LIKE ?1 OR ln.name_norm LIKE ?2)
+       WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2)
          AND ln.lang = ?3
          AND l.is_active = 1
-       ORDER BY ln.name ASC
+       ORDER BY
+         CASE WHEN ln.name_norm = ?1 THEN 0 ELSE 1 END,
+         ln.name ASC
        LIMIT 20`
-    ).bind(`%${q}%`, `%${qNorm}%`, lang);
+    ).bind(qNorm, `${q}%`, lang);
 
     const result = await stmt.all();
     return respond({ results: result.results || [], query: q });

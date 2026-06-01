@@ -53,6 +53,17 @@ export function normalizeName(name: string): string {
 }
 
 /**
+ * 搜索用轻量归一化（仅去行政后缀 + 小写，保留所有语言文字字符）
+ * 与 normalizeName 的区别：不调用 [^\w\s\-] 过滤，避免误删中日韩等非 ASCII 字符
+ */
+export function normalizeSearchTerm(term: string): string {
+  let normalized = term.trim().toLowerCase();
+  normalized = normalized.replace(GLOBAL_SUFFIX_PATTERN, '');
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  return normalized;
+}
+
+/**
  * 构建路径 key（用于缓存查询）
  * "中国 山东 济南 长清" → "中国|山东|济南|长清"
  */
