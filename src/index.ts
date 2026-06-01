@@ -31,8 +31,11 @@ export interface Env {
 // 路由定义
 // =============================================
 
+const { preflight, corsify } = cors({ origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'] });
+
 const router = AutoRouter({
-  before: [cors({ origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'] })],
+  before: [preflight],
+  finally: [corsify],
 });
 
 // OPTIONS 预检
