@@ -6,11 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "teaven-geo-db"
-database_id = "{{YOUR_D1_DATABASE_ID}}"
+database_id = "cb910a67-f376-4673-b568-3ed2f3728e22"
 
 [[kv_namespaces]]
 binding = "GEO_CACHE"
-id = "{{YOUR_KV_NAMESPACE_ID}}"
+id = "aff987c5443c4cf2bcfe61fa8decef8f"
 
 [vars]
 CACHE_TTL = 86400
