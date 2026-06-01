@@ -16,6 +16,7 @@
 import { AutoRouter, cors, json } from 'itty-router';
 import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate } from './services/geo';
 import { corsPreflight } from './utils/response';
+import { normalizeName } from './utils/normalize';
 
 // itty-router v5 的 json(data, init) 要求 init 为 ResponseInit 对象
 // 封装一个接受纯 statusCode 的便捷函数
@@ -231,17 +232,19 @@ router.get('/geo/search', async (req: Request, env: Env) => {
   }
 
   try {
-    // 直接从 location_names 模糊搜索名称
-    // location_search 表为未来扩展预留，当前未填充数据
+    // 归一化搜索关键词（去掉行政后缀如"市"、"区"等），与数据中的 name_norm 匹配
+    const qNorm = normalizeName(q);
+    // 同时用原始关键词和归一化关键词搜索 name 和 name_norm
     const stmt = env.DB.prepare(
       `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
        FROM location_names ln
        INNER JOIN locations l ON ln.location_id = l.id
-       WHERE ln.name LIKE ?1 AND ln.lang = ?2
+       WHERE (ln.name LIKE ?1 OR ln.name_norm LIKE ?1 OR ln.name_norm LIKE ?2)
+         AND ln.lang = ?3
          AND l.is_active = 1
        ORDER BY ln.name ASC
        LIMIT 20`
-    ).bind(`%${q}%`, lang);
+    ).bind(`%${q}%`, `%${qNorm}%`, lang);
 
     const result = await stmt.all();
     return respond({ results: result.results || [], query: q });
