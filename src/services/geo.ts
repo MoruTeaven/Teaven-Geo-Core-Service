@@ -17,6 +17,7 @@ import {
   queryPathCache,
   upsertPathCache,
   queryNameByLang,
+  queryParentById,
   type ChildResult,
   type LocationDetail,
 } from '../db/queries';
@@ -309,4 +310,98 @@ export async function getAncestors(
   }
 
   return ancestors;
+}
+
+// =============================================
+// ⑤ 从属关系检查
+// =============================================
+
+export interface SubordinateResult {
+  is_subordinate: boolean;
+  descendant: { id: number; name: string; level: string };
+  ancestor: { id: number; name: string; level: string };
+  depth: number; // descendant 在 ancestor 下面第几级（0 = 同级，-1 = 未找到关系）
+}
+
+/**
+ * 检查 descendant 是否为 ancestor 的下属行政单位
+ * 即：ancestor 是否出现在 descendant 的祖先链中
+ * 
+ * @example
+ *   isSubordinate(db, 济南id, 山东id)  → true  (济南是山东的下属)
+ *   isSubordinate(db, 山东id, 济南id)  → false (山东不是济南的下属)
+ */
+export async function isSubordinate(
+  db: D1Database,
+  descendantId: number,
+  ancestorId: number,
+  lang: string = 'zh',
+): Promise<SubordinateResult> {
+  // 获取 descendant 的信息
+  const descStmt = queryLocationById(db, descendantId);
+  const descLoc = await descStmt.first<{
+    id: number;
+    level: string;
+    name_zh: string | null;
+    name_en: string | null;
+    name_ja: string | null;
+  }>();
+  if (!descLoc) {
+    throw new Error(`Location not found: ${descendantId}`);
+  }
+
+  // 获取 ancestor 的信息
+  const ancStmt = queryLocationById(db, ancestorId);
+  const ancLoc = await ancStmt.first<{
+    id: number;
+    level: string;
+    name_zh: string | null;
+    name_en: string | null;
+    name_ja: string | null;
+  }>();
+  if (!ancLoc) {
+    throw new Error(`Location not found: ${ancestorId}`);
+  }
+
+  // 名称获取辅助函数
+  const getName = (loc: { name_zh: string | null; name_en: string | null; name_ja: string | null }): string => {
+    const nameMap: Record<string, string | null> = { zh: loc.name_zh, en: loc.name_en, ja: loc.name_ja };
+    return nameMap[lang] || loc.name_en || loc.name_zh || '';
+  };
+
+  // 同一节点不算从属
+  if (descendantId === ancestorId) {
+    return {
+      is_subordinate: false,
+      descendant: { id: descLoc.id, name: getName(descLoc), level: descLoc.level },
+      ancestor: { id: ancLoc.id, name: getName(ancLoc), level: ancLoc.level },
+      depth: 0,
+    };
+  }
+
+  // 从 descendant 向上遍历 parent_id，查找 ancestor
+  let currentId: number | null = descLoc.id;
+  let depth = 0;
+  let found = false;
+
+  while (currentId !== null) {
+    const parentStmt = queryParentById(db, currentId);
+    const parent = await parentStmt.first<{ id: number; parent_id: number | null; level: string }>();
+    if (!parent) break;
+
+    if (parent.id === ancestorId) {
+      found = true;
+      break;
+    }
+
+    currentId = parent.parent_id;
+    depth++;
+  }
+
+  return {
+    is_subordinate: found,
+    descendant: { id: descLoc.id, name: getName(descLoc), level: descLoc.level },
+    ancestor: { id: ancLoc.id, name: getName(ancLoc), level: ancLoc.level },
+    depth: found ? depth : -1,
+  };
 }

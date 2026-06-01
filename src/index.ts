@@ -8,12 +8,13 @@
  *   POST /geo/resolve                            - 路径反解析
  *   GET  /geo/get?id=xxx&lang=zh                 - 单点查询
  *   GET  /geo/ancestors?id=xxx&lang=zh           - 父级链（面包屑）
+ *   GET  /geo/is-subordinate?descendant=xxx&ancestor=xxx&lang=zh - 从属关系检查
  *   GET  /geo/search?q=xxx&lang=zh               - 搜索（未来扩展）
  *   GET  /health                                  - 健康检查
  */
 
 import { AutoRouter, cors, json } from 'itty-router';
-import { getChildren, resolvePath, getLocation, getAncestors } from './services/geo';
+import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate } from './services/geo';
 import { corsPreflight } from './utils/response';
 
 // itty-router v5 的 json(data, init) 要求 init 为 ResponseInit 对象
@@ -164,7 +165,34 @@ router.get('/geo/ancestors', async (req: Request, env: Env) => {
 });
 
 // =============================================
-// ⑤ GET /geo/search - 搜索（未来扩展）
+// ⑤ GET /geo/is-subordinate - 从属关系检查
+// =============================================
+router.get('/geo/is-subordinate', async (req: Request, env: Env) => {
+  const url = new URL(req.url);
+  const descendantStr = url.searchParams.get('descendant');
+  const ancestorStr = url.searchParams.get('ancestor');
+  const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
+
+  if (!descendantStr || !ancestorStr) {
+    return respond({ error: 'Both descendant and ancestor (GeoNames IDs) are required' }, 400);
+  }
+
+  const descendantId = parseInt(descendantStr, 10);
+  const ancestorId = parseInt(ancestorStr, 10);
+  if (isNaN(descendantId) || isNaN(ancestorId)) {
+    return respond({ error: 'Invalid ID(s)' }, 400);
+  }
+
+  try {
+    const result = await isSubordinate(env.DB, descendantId, ancestorId, lang);
+    return respond(result);
+  } catch (e: any) {
+    return respond({ error: e.message }, 404);
+  }
+});
+
+// =============================================
+// ⑥ GET /geo/search - 搜索（未来扩展）
 // =============================================
 router.get('/geo/search', async (req: Request, env: Env) => {
   const url = new URL(req.url);

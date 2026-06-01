@@ -225,6 +225,25 @@ export function queryNameByLang(
 }
 
 // =============================================
+// 从属关系检查
+// =============================================
+
+/**
+ * 获取某节点的 parent_id（用于上游遍历）
+ * 命中主键 idx_locations(id)
+ */
+export function queryParentById(db: D1Database, id: number) {
+  return db
+    .prepare(
+      `SELECT id, parent_id, level
+       FROM locations
+       WHERE id = ?1 AND is_active = 1
+       LIMIT 1`,
+    )
+    .bind(id);
+}
+
+// =============================================
 // 批量查询（预热热点城市等场景）
 // =============================================
 

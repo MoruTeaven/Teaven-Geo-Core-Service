@@ -59,6 +59,13 @@ export interface AncestorsResponse {
   ancestors: AncestorItem[];
 }
 
+export interface SubordinateResponse {
+  is_subordinate: boolean;
+  descendant: { id: number; name: string; level: string };
+  ancestor: { id: number; name: string; level: string };
+  depth: number; // 0 = 同级, > 0 = descendant 在 ancestor 下面第几级, -1 = 未找到从属关系
+}
+
 export interface SearchResponse {
   results: Array<{
     location_id: number;

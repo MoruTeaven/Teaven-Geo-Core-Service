@@ -156,7 +156,7 @@ POST /geo/resolve
 ### ③ 单点查询
 
 ```
-GET /geo/get?id=1804565&lang=zh
+GET /geo/get?id=1814991&lang=zh
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -206,13 +206,43 @@ GET /geo/ancestors?id=1814990&lang=zh
 
 ---
 
-### ⑤ 搜索（预览）
+### ⑤ 从属关系检查
+
+```
+GET /geo/is-subordinate?descendant=xxx&ancestor=xxx&lang=zh
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| descendant | number | 是 | 待检查的下级节点 GeoNames ID |
+| ancestor | number | 是 | 目标上级节点 GeoNames ID |
+| lang | string | 否 | 语言，默认 `zh` |
+
+**说明：** 检查节点 `descendant` 是否为节点 `ancestor` 的下属行政单位，即 `ancestor` 是否出现在 `descendant` 的祖先链中。
+
+**响应示例：**
+
+```json
+{
+  "is_subordinate": true,
+  "descendant": { "id": 1804645, "name": "济南市", "level": "admin2" },
+  "ancestor": { "id": 1796236, "name": "山东省", "level": "admin1" },
+  "depth": 1
+}
+```
+
+- `is_subordinate`: `true` 表示 descendant 是 ancestor 的下属单位
+- `depth`: `0` = 同级，`> 0` = descendant 在 ancestor 下面第几级，`-1` = 未找到从属关系
+
+---
+
+### ⑥ 搜索（预览）
 
 ```
 GET /geo/search?q=定陶&lang=zh
 ```
 
-### ⑥ 健康检查
+### ⑦ 健康检查
 
 ```
 GET /health
