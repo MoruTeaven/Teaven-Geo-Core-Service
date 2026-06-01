@@ -302,4 +302,9 @@ teaven-geo-core-service/
 
 ## 许可证
 
-MIT
+本项目代码采用 [MIT](LICENSE) 协议。
+
+### 数据归属
+
+本项目使用 [GeoNames](https://www.geonames.org/) 地理数据，遵循
+[Creative Commons Attribution 4.0 (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) 协议。

@@ -25,7 +25,9 @@ import {
   buildPathKey,
   parsePathTokens,
   resolveLangPriority,
+  isTraditionalChinese,
 } from '../utils/normalize';
+import { toTraditional } from '../utils/s2t';
 import { kvGet, kvSet, type CacheEntry } from '../utils/cache';
 
 // =============================================
@@ -37,8 +39,21 @@ export async function getChildren(
   parentId: number | null,
   lang: string = 'en',
 ): Promise<{ children: ChildResult[] }> {
-  const stmt = queryChildren(db, parentId, lang);
+  // zh-Hant 请求时，用 zh 数据查询
+  const queryLang = isTraditionalChinese(lang) ? 'zh' : lang;
+  const stmt = queryChildren(db, parentId, queryLang);
   const result = await stmt.all<ChildResult>();
+  
+  // 如果是繁体中文请求，转换名称
+  if (isTraditionalChinese(lang)) {
+    return {
+      children: (result.results || []).map(c => ({
+        ...c,
+        name: toTraditional(c.name),
+      })),
+    };
+  }
+  
   return { children: result.results || [] };
 }
 
@@ -230,6 +245,11 @@ export async function getLocation(
     }
   }
 
+  // 繁体中文请求：转换名称
+  const needConvert = isTraditionalChinese(preferredLang);
+  const convert = (s: string | null): string | null =>
+    s && needConvert ? toTraditional(s) : s;
+
   return {
     id: result.id,
     parent_id: result.parent_id,
@@ -237,11 +257,11 @@ export async function getLocation(
     country_code: result.country_code,
     latitude: result.latitude,
     longitude: result.longitude,
-    name: displayName,
+    name: needConvert ? toTraditional(displayName) : displayName,
     names: {
-      zh: result.name_zh,
-      en: result.name_en,
-      ja: result.name_ja,
+      zh: convert(result.name_zh),
+      en: result.name_en,  // 英文不转换
+      ja: result.name_ja,  // 日文不转换
     },
   };
 }
@@ -257,6 +277,7 @@ export async function getAncestors(
 ): Promise<Array<{ id: number; name: string; level: string }>> {
   const ancestors: Array<{ id: number; name: string; level: string }> = [];
   let currentId: number | null = id;
+  const needConvert = isTraditionalChinese(lang);
 
   while (currentId !== null) {
     const locStmt = queryLocationById(db, currentId);
@@ -276,7 +297,12 @@ export async function getAncestors(
       en: loc.name_en,
       ja: loc.name_ja,
     };
-    const name = nameMap[lang] || loc.name_en || loc.name_zh || '';
+    // zh-Hant 时用 zh 数据
+    const lookupLang = needConvert ? 'zh' : lang;
+    let name = nameMap[lookupLang] || loc.name_en || loc.name_zh || '';
+    if (needConvert) {
+      name = toTraditional(name);
+    }
 
     ancestors.unshift({ id: loc.id, name, level: loc.level });
     currentId = loc.parent_id;

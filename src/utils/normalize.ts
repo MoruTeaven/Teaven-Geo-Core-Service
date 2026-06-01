@@ -74,12 +74,24 @@ export function parsePathTokens(path: string): string[] {
 /**
  * 语言优先级解析
  * 规则: lang → en → zh
+ * 
+ * 注意: zh-Hant/zh-TW/zh-HK 会映射到 zh 数据（数据库无繁简之分），
+ *       由上层服务在返回前做简→繁转换。
  */
 export function resolveLangPriority(preferredLang: string): string[] {
-  const validLangs = ['zh', 'en', 'ja'];
   const lang = preferredLang?.toLowerCase() || 'en';
   
-  const result: string[] = [lang];
+  // 繁体中文映射：查询时仍用 zh，转换在服务层做
+  const isHant = lang === 'zh-hant' || lang === 'zh-tw' || lang === 'zh-hk' || lang === 'zh-mo';
+  
+  let result: string[];
+  if (isHant) {
+    // zh-Hant 优先级: zh → en → ja（数据源是 zh）
+    result = ['zh'];
+  } else {
+    result = [lang];
+  }
+  
   // 按优先级追加 fallback
   const fallbackOrder = ['en', 'zh', 'ja'];
   for (const fb of fallbackOrder) {
@@ -88,6 +100,14 @@ export function resolveLangPriority(preferredLang: string): string[] {
     }
   }
   return result;
+}
+
+/**
+ * 判断是否为繁体中文请求
+ */
+export function isTraditionalChinese(lang: string): boolean {
+  const l = lang.toLowerCase();
+  return l === 'zh-hant' || l === 'zh-tw' || l === 'zh-hk' || l === 'zh-mo';
 }
 
 /**
