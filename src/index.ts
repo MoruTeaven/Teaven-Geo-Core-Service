@@ -12,7 +12,7 @@
  *   GET  /health                                  - 健康检查
  */
 
-import { AutoRouter, cors, error, json } from 'itty-router';
+import { AutoRouter, cors, json } from 'itty-router';
 import { getChildren, resolvePath, getLocation, getAncestors } from './services/geo';
 import { corsPreflight } from './utils/response';
 
@@ -70,14 +70,14 @@ router.get('/geo/children', async (req: Request, env: Env) => {
   // parent_id 为空时返回顶级（国家列表）
   const parentId = parentIdStr ? parseInt(parentIdStr, 10) : null;
   if (parentIdStr && isNaN(parentId as number)) {
-    return error(400, 'Invalid parent_id');
+    return json({ error: 'Invalid parent_id' }, 400);
   }
 
   try {
     const result = await getChildren(env.DB, parentId, lang);
     return json(result);
   } catch (e: any) {
-    return error(500, e.message);
+    return json({ error: e.message }, 500);
   }
 });
 
@@ -89,19 +89,19 @@ router.post('/geo/resolve', async (req: Request, env: Env) => {
   try {
     body = await req.json();
   } catch {
-    return error(400, 'Invalid JSON body');
+    return json({ error: 'Invalid JSON body' }, 400);
   }
 
   const { path, lang = 'en' } = body;
   if (!path || typeof path !== 'string' || path.trim().length === 0) {
-    return error(400, 'path is required');
+    return json({ error: 'path is required' }, 400);
   }
 
   try {
     const result = await resolvePath(env.DB, env.GEO_CACHE, path, lang);
     return json(result);
   } catch (e: any) {
-    return error(404, e.message);
+    return json({ error: e.message }, 404);
   }
 });
 
@@ -114,19 +114,19 @@ router.get('/geo/get', async (req: Request, env: Env) => {
   const lang = url.searchParams.get('lang') || 'en';
 
   if (!idStr) {
-    return error(400, 'id is required');
+    return json({ error: 'id is required' }, 400);
   }
 
   const id = parseInt(idStr, 10);
   if (isNaN(id)) {
-    return error(400, 'Invalid id');
+    return json({ error: 'Invalid id' }, 400);
   }
 
   try {
     const result = await getLocation(env.DB, id, lang);
     return json(result);
   } catch (e: any) {
-    return error(404, e.message);
+    return json({ error: e.message }, 404);
   }
 });
 
@@ -139,19 +139,19 @@ router.get('/geo/ancestors', async (req: Request, env: Env) => {
   const lang = url.searchParams.get('lang') || 'en';
 
   if (!idStr) {
-    return error(400, 'id is required');
+    return json({ error: 'id is required' }, 400);
   }
 
   const id = parseInt(idStr, 10);
   if (isNaN(id)) {
-    return error(400, 'Invalid id');
+    return json({ error: 'Invalid id' }, 400);
   }
 
   try {
     const ancestors = await getAncestors(env.DB, id, lang);
     return json({ ancestors });
   } catch (e: any) {
-    return error(404, e.message);
+    return json({ error: e.message }, 404);
   }
 });
 
@@ -164,7 +164,7 @@ router.get('/geo/search', async (req: Request, env: Env) => {
   const lang = url.searchParams.get('lang') || 'en';
 
   if (!q || q.trim().length === 0) {
-    return error(400, 'q is required');
+    return json({ error: 'q is required' }, 400);
   }
 
   try {
@@ -181,14 +181,14 @@ router.get('/geo/search', async (req: Request, env: Env) => {
     const result = await stmt.all();
     return json({ results: result.results || [], query: q });
   } catch (e: any) {
-    return error(500, e.message);
+    return json({ error: e.message }, 500);
   }
 });
 
 // =============================================
 // 404
 // =============================================
-router.all('*', () => error(404, 'Not Found'));
+router.all('*', () => json({ error: 'Not Found' }, 404));
 
 // =============================================
 // 导出 Worker
