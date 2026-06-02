@@ -14,7 +14,7 @@
  */
 
 import { AutoRouter, cors, json } from 'itty-router';
-import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate } from './services/geo';
+import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate, resolveHierarchyName, searchChildren } from './services/geo';
 import { corsPreflight } from './utils/response';
 import { normalizeSearchTerm } from './utils/normalize';
 
@@ -220,38 +220,76 @@ router.get('/geo/is-subordinate', async (req: Request, env: Env) => {
 });
 
 // =============================================
-// ⑥ GET /geo/search - 搜索（未来扩展）
+// ⑥ GET /geo/search - 级联搜索
+//
+//   末位 token = 搜索目标，前位 token = 层级面包屑（深度不限）
+//
+//   示例：
+//     ?path=中国,山东,菏泽,定陶      → 在菏泽下搜"定陶"
+//     ?path=中国,乳山                → 在中国下搜"乳山"（跳过中间层级）
+//     ?path=浙江,杭州                → 在浙江下搜"杭州"
+//     ?path=金华市,义乌市            → 在金华市下搜"义乌市"（自动处理行政后缀）
+//     ?q=定陶                        → 单 token 全库搜索（向后兼容）
+//   分隔符支持：逗号、空格、竖线、中文逗号/顿号
+//   支持名称或 GeoNames ID（纯数字）
 // =============================================
 router.get('/geo/search', async (req: Request, env: Env) => {
   const url = new URL(req.url);
-  const q = url.searchParams.get('q');
   const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
+  const q = url.searchParams.get('q') || '';
+  const pathStr = url.searchParams.get('path') || '';
 
-  if (!q || q.trim().length === 0) {
-    return respond({ error: 'q is required' }, 400);
+  // path 优先，q 兜底（向后兼容）
+  const rawInput = pathStr || q;
+  if (!rawInput.trim()) {
+    return respond({ error: 'path or q is required' }, 400);
   }
 
-  try {
-    // 轻量归一化搜索词：仅去行政后缀 + 小写（zh/en/ja 三语通用），保留所有语言文字字符
-    const qNorm = normalizeSearchTerm(q);
-    // 分层匹配：name_norm 精确匹配优先 → name 前缀匹配兜底，避免全模糊 LIKE 返回过多噪音
-    const stmt = env.DB.prepare(
-      `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
-       FROM location_names ln
-       INNER JOIN locations l ON ln.location_id = l.id
-       WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2)
-         AND ln.lang = ?3
-         AND l.is_active = 1
-       ORDER BY
-         CASE WHEN ln.name_norm = ?1 THEN 0 ELSE 1 END,
-         ln.name ASC
-       LIMIT 20`
-    ).bind(qNorm, `${q}%`, lang);
+  // 多分隔符切分 token
+  const tokens = rawInput.split(/[\s,|，、]+/).map(t => t.trim()).filter(t => t.length > 0);
+  if (tokens.length === 0) {
+    return respond({ error: 'path or q is required' }, 400);
+  }
 
-    const result = await stmt.all();
-    return respond({ results: result.results || [], query: q });
+  // 最后一个 token 是搜索目标，前面的都是层级面包屑
+  const searchToken = tokens[tokens.length - 1];
+  const hierarchy = tokens.slice(0, -1);
+
+  try {
+    if (hierarchy.length === 0) {
+      // ———— 单 token：全库模糊搜索 ————
+      const qNorm = normalizeSearchTerm(searchToken);
+      const stmt = env.DB.prepare(
+        `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
+         FROM location_names ln
+         INNER JOIN locations l ON ln.location_id = l.id
+         WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2)
+           AND ln.lang = ?3
+           AND l.is_active = 1
+         ORDER BY
+           CASE WHEN ln.name_norm = ?1 THEN 0 ELSE 1 END,
+           ln.name ASC
+         LIMIT 20`
+      ).bind(qNorm, `${searchToken}%`, lang);
+      const result = await stmt.all();
+      return respond({ results: result.results || [], query: searchToken });
+    }
+
+    // ———— 多 token：逐级解析层级面包屑，在最后一个 parent 下搜索 ————
+    let parentId: number | null = null;
+    for (const name of hierarchy) {
+      parentId = await resolveHierarchyName(env.DB, name, parentId);
+    }
+
+    const results = await searchChildren(env.DB, parentId!, searchToken, lang);
+    return respond({
+      results,
+      query: searchToken,
+      hierarchy,
+      parent_id: parentId,
+    });
   } catch (e: any) {
-    return respond({ error: e.message }, 500);
+    return respond({ error: e.message }, 404);
   }
 });
 

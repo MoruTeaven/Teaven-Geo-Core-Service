@@ -18,11 +18,13 @@ import {
   upsertPathCache,
   queryNameByLang,
   queryParentById,
+  querySearchChildren,
   type ChildResult,
   type LocationDetail,
 } from '../db/queries';
 import {
   normalizeName,
+  normalizeSearchTerm,
   buildPathKey,
   parsePathTokens,
   resolveLangPriority,
@@ -408,4 +410,82 @@ export async function isSubordinate(
     ancestor: { id: ancLoc.id, name: getName(ancLoc), level: ancLoc.level },
     depth: found ? depth : -1,
   };
+}
+
+// =============================================
+// ⑥ 层级名解析（搜索用）
+// =============================================
+
+/**
+ * 解析单个层级名称到 geonameid
+ * - 纯数字 → 直接作为 ID 使用（验证存在性）
+ * - 字符串 → 先精确父级约束匹配，再模糊兜底
+ * 
+ * @param db D1 数据库
+ * @param nameOrId 名称或纯数字 ID 字符串
+ * @param parentId 父节点 ID（null = 无约束/顶级）
+ * @returns 解析到的 geonameid，失败抛出错误
+ */
+export async function resolveHierarchyName(
+  db: D1Database,
+  nameOrId: string,
+  parentId: number | null,
+): Promise<number> {
+  const trimmed = nameOrId.trim();
+  if (!trimmed) throw new Error('Empty hierarchy name');
+
+  // 纯数字 → 当作 geonameid 直接使用
+  if (/^\d+$/.test(trimmed)) {
+    const id = parseInt(trimmed, 10);
+    const locStmt = queryLocationById(db, id);
+    const loc = await locStmt.first<{ id: number }>();
+    if (!loc) throw new Error(`Location not found: ${id}`);
+    // 可选：验证 parent 关系
+    if (parentId !== null) {
+      const parentStmt = queryParentById(db, id);
+      const parent = await parentStmt.first<{ parent_id: number | null }>();
+      if (!parent || parent.parent_id !== parentId) {
+        throw new Error(`Location ${id} is not a child of ${parentId}`);
+      }
+    }
+    return id;
+  }
+
+  // 名称 → 归一化后查找
+  const nameNorm = normalizeSearchTerm(trimmed);
+
+  // Step 1: 精确匹配（parent_id 约束）
+  const exactStmt = queryByNameNorm(db, nameNorm, parentId);
+  const exact = await exactStmt.first<{ id: number }>();
+  if (exact) return exact.id;
+
+  // Step 2: 模糊匹配（不受 parent_id 约束）
+  const fuzzyStmt = queryByNameNormFuzzy(db, nameNorm);
+  const fuzzyResult = await fuzzyStmt.all<{ id: number; parent_id: number | null }>();
+  if (fuzzyResult.results && fuzzyResult.results.length > 0) {
+    if (parentId !== null) {
+      // 在候选列表中优先找 parent_id 匹配的
+      const matched = fuzzyResult.results.find(r => r.parent_id === parentId);
+      if (matched) return matched.id;
+    }
+    // 取第一个候选
+    return fuzzyResult.results[0].id;
+  }
+
+  throw new Error(`Cannot resolve: "${trimmed}"`);
+}
+
+/**
+ * 在指定父节点下搜索匹配名称的子节点
+ */
+export async function searchChildren(
+  db: D1Database,
+  parentId: number,
+  q: string,
+  lang: string,
+): Promise<Array<{ location_id: number; name: string; level: string; country_code: string | null }>> {
+  const qNorm = normalizeSearchTerm(q);
+  const stmt = querySearchChildren(db, parentId, qNorm, `${q}%`, lang);
+  const result = await stmt.all<{ location_id: number; name: string; level: string; country_code: string | null }>();
+  return result.results || [];
 }

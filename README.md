@@ -236,11 +236,55 @@ GET /geo/is-subordinate?descendant=xxx&ancestor=xxx&lang=zh
 
 ---
 
-### ⑥ 搜索（预览）
+
+
+### ⑥ 搜索（末位即目标）
+
+**核心规则：** 最后一个 token 是搜索目标，前面的 token 是层级面包屑（深度不限）。
+
+**A) 已知层级 → 在指定范围内搜索：**
+
+```
+GET /geo/search?path=中国,山东,菏泽,定陶&lang=zh
+GET /geo/search?path=中国,乳山&lang=zh
+GET /geo/search?path=浙江,杭州&lang=zh
+GET /geo/search?path=金华市,义乌市&lang=zh
+```
+
+**B) 单 token → 全库模糊（等同于旧版 q=）：**
 
 ```
 GET /geo/search?q=定陶&lang=zh
 ```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| path | string | 否 | 逗号/空格/竖线分隔的层级路径，末位=搜索目标，前位=面包屑 |
+| q | string | 否 | `path` 的简写形式（仅单 token 时等同于 `path=tok`） |
+| lang | string | 否 | 语言，默认 `zh` |
+
+**特色行为：**
+
+- **层级不必完整** — `中国,乳山` 虽然跳过了山东、威海两层，仍能在全中国范围内搜到乳山
+- **深度自适应** — `浙江,杭州` 搜的是市（admin2），`金华市,义乌市` 搜的是区县（admin3），代码不关心 level 标号
+- **行政后缀自动归一化** — `金华市` → `金华`，`义乌市` → `义乌`，`New York City` → `new york`
+- **名称和 ID 混用** — `?path=1814991,山东,菏泽` 第一级可以是 geonameid
+- **三语通用** — `New York`(en)、`東京都`(ja)、`江苏省`(zh)
+
+**响应示例：**
+
+```json
+{
+  "results": [
+    { "location_id": 1812743, "name": "定陶区", "level": "admin3", "country_code": "CN" }
+  ],
+  "query": "定陶",
+  "hierarchy": ["中国", "山东", "菏泽"],
+  "parent_id": 1799971
+}
+```
+
+### ⑦ 健康检查
 
 ### ⑦ 健康检查
 

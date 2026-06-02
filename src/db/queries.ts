@@ -265,3 +265,44 @@ export function queryNamesBatch(
     )
     .bind(...locationIds, lang);
 }
+
+// =============================================
+// 级联搜索：在指定 parent 的整个子树中按名称搜索
+// =============================================
+
+/**
+ * 在指定 parent 的**整个子树**（递归所有后代）中搜索匹配名称的 location
+ * 使用递归 CTE 覆盖跳过中间层级的场景（如"中国,余杭"跳过浙江/杭州）
+ * 命中 idx_locations_parent + idx_names_norm
+ */
+export function querySearchChildren(
+  db: D1Database,
+  parentId: number,
+  nameNorm: string,
+  namePrefix: string,
+  lang: string,
+) {
+  return db
+    .prepare(
+      `WITH RECURSIVE subtree AS (
+         SELECT id, level FROM locations
+         WHERE parent_id = ?1 AND is_active = 1
+         UNION ALL
+         SELECT l.id, l.level
+         FROM locations l
+         INNER JOIN subtree s ON l.parent_id = s.id
+         WHERE l.is_active = 1
+       )
+       SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code
+       FROM subtree s
+       INNER JOIN location_names ln ON s.id = ln.location_id
+       INNER JOIN locations l ON s.id = l.id
+       WHERE (ln.name_norm = ?2 OR ln.name LIKE ?3)
+         AND ln.lang = ?4
+       ORDER BY
+         CASE WHEN ln.name_norm = ?2 THEN 0 ELSE 1 END,
+         ln.name ASC
+       LIMIT 20`,
+    )
+    .bind(parentId, nameNorm, namePrefix, lang);
+}
