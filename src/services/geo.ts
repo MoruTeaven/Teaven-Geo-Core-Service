@@ -18,7 +18,6 @@ import {
   upsertPathCache,
   queryNameByLang,
   queryParentById,
-  querySearchChildren,
   type ChildResult,
   type LocationDetail,
 } from '../db/queries';
@@ -476,7 +475,10 @@ export async function resolveHierarchyName(
 }
 
 /**
- * 在指定父节点下搜索匹配名称的子节点
+ * 在指定父节点的**整个子树**中搜索匹配名称的后代
+ *
+ * 分两步：① 全局搜名字 → ② 逐个验证祖先链是否包含 parentId
+ * 避免递归 CTE 在 D1 上的兼容性问题
  */
 export async function searchChildren(
   db: D1Database,
@@ -485,7 +487,61 @@ export async function searchChildren(
   lang: string,
 ): Promise<Array<{ location_id: number; name: string; level: string; country_code: string | null }>> {
   const qNorm = normalizeSearchTerm(q);
-  const stmt = querySearchChildren(db, parentId, qNorm, `${q}%`, lang);
-  const result = await stmt.all<{ location_id: number; name: string; level: string; country_code: string | null }>();
-  return result.results || [];
+
+  // Step 1: 全局搜索名字匹配的候选（多取一些供过滤）
+  const stmt = db
+    .prepare(
+      `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code, l.parent_id
+       FROM location_names ln
+       INNER JOIN locations l ON ln.location_id = l.id
+       WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2)
+         AND ln.lang = ?3
+         AND l.is_active = 1
+       ORDER BY
+         CASE WHEN ln.name_norm = ?1 THEN 0 ELSE 1 END,
+         ln.name ASC
+       LIMIT 50`,
+    )
+    .bind(qNorm, `${q}%`, lang);
+  const result = await stmt.all<{
+    location_id: number; name: string; level: string;
+    country_code: string | null; parent_id: number | null;
+  }>();
+  const candidates = result.results || [];
+
+  // Step 2: 过滤 — 只保留 parentId 在祖先链中的候选
+  const filtered: Array<{ location_id: number; name: string; level: string; country_code: string | null }> = [];
+
+  for (const c of candidates) {
+    let cursor: number | null = c.parent_id;
+    let found = false;
+
+    // 直接子节点快速检查
+    if (cursor === parentId) {
+      found = true;
+    } else {
+      // 最多向上追溯 5 层（cover admin3→admin2→admin1→country）
+      for (let i = 0; i < 5 && cursor !== null; i++) {
+        const parentRow = await queryParentById(db, cursor).first<{ parent_id: number | null }>();
+        if (!parentRow) break;
+        cursor = parentRow.parent_id;
+        if (cursor === parentId) {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (found) {
+      filtered.push({
+        location_id: c.location_id,
+        name: c.name,
+        level: c.level,
+        country_code: c.country_code,
+      });
+      if (filtered.length >= 20) break;
+    }
+  }
+
+  return filtered;
 }

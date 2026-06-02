@@ -230,14 +230,19 @@ router.get('/geo/is-subordinate', async (req: Request, env: Env) => {
 //     ?path=浙江,杭州                → 在浙江下搜"杭州"
 //     ?path=金华市,义乌市            → 在金华市下搜"义乌市"（自动处理行政后缀）
 //     ?q=定陶                        → 单 token 全库搜索（向后兼容）
-//   分隔符支持：逗号、空格、竖线、中文逗号/顿号
-//   支持名称或 GeoNames ID（纯数字）
+//   支持两种传参方式：
+//     A) ?path=中国,乳山               → 单参逗号分隔
+//     B) ?path=中国&path=乳山           → 多参每参一个 token
+//   也支持：名称或 GeoNames ID（纯数字）
 // =============================================
 router.get('/geo/search', async (req: Request, env: Env) => {
   const url = new URL(req.url);
   const lang = url.searchParams.get('lang') || env.DEFAULT_LANG || 'zh';
   const q = url.searchParams.get('q') || '';
-  const pathStr = url.searchParams.get('path') || '';
+
+  // path 兼容两种传法：单参逗号分隔 / 多参每参一个
+  const pathValues = url.searchParams.getAll('path');
+  const pathStr = pathValues.length > 0 ? pathValues.join(',') : '';
 
   // path 优先，q 兜底（向后兼容）
   const rawInput = pathStr || q;

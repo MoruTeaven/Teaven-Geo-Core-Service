@@ -245,7 +245,11 @@ GET /geo/is-subordinate?descendant=xxx&ancestor=xxx&lang=zh
 **A) 已知层级 → 在指定范围内搜索：**
 
 ```
+# 方式1：逗号分隔单参
 GET /geo/search?path=中国,山东,菏泽,定陶&lang=zh
+# 方式2：每参一个 token（等价）
+GET /geo/search?path=中国&path=山东&path=菏泽&path=定陶&lang=zh
+# 跳过中间层级也没问题
 GET /geo/search?path=中国,乳山&lang=zh
 GET /geo/search?path=浙江,杭州&lang=zh
 GET /geo/search?path=金华市,义乌市&lang=zh
