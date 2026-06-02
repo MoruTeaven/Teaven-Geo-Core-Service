@@ -69,20 +69,28 @@ export function queryChildren(
   parentId: number | null,
   lang: string,
 ) {
-  const parentCondition = parentId !== null
-    ? 'l.parent_id = ?1'
-    : 'l.level = \'country\'';
-
+  if (parentId !== null) {
+    return db
+      .prepare(
+        `SELECT l.id, n.name, l.level
+         FROM locations l
+         INNER JOIN location_names n ON l.id = n.location_id AND n.lang = ?2
+         WHERE l.parent_id = ?1
+           AND l.is_active = 1
+         ORDER BY n.name ASC`,
+      )
+      .bind(parentId, lang);
+  }
   return db
     .prepare(
       `SELECT l.id, n.name, l.level
        FROM locations l
-       INNER JOIN location_names n ON l.id = n.location_id AND n.lang = ?2
-       WHERE ${parentCondition}
+       INNER JOIN location_names n ON l.id = n.location_id AND n.lang = ?1
+       WHERE l.level = 'country'
          AND l.is_active = 1
        ORDER BY n.name ASC`,
     )
-    .bind(parentId, lang);
+    .bind(lang);
 }
 
 // =============================================
@@ -133,17 +141,19 @@ export function queryByNameNorm(
     ? 'l.parent_id = ?2'
     : 'l.parent_id IS NULL';
 
-  return db
-    .prepare(
-      `SELECT l.id, l.parent_id, l.level, l.country_code
-       FROM location_names n
-       INNER JOIN locations l ON n.location_id = l.id
-       WHERE n.name_norm = ?1
-         AND ${parentCondition}
-         AND l.is_active = 1
-       LIMIT 1`,
-    )
-    .bind(nameNorm, parentId);
+  const stmt = db.prepare(
+    `SELECT l.id, l.parent_id, l.level, l.country_code
+     FROM location_names n
+     INNER JOIN locations l ON n.location_id = l.id
+     WHERE n.name_norm = ?1
+       AND ${parentCondition}
+       AND l.is_active = 1
+     LIMIT 1`,
+  );
+  // 只在 SQL 中有 ?2 占位符时才绑定 parentId
+  return parentId !== null
+    ? stmt.bind(nameNorm, parentId)
+    : stmt.bind(nameNorm);
 }
 
 /**
