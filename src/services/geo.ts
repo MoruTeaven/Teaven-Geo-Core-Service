@@ -458,18 +458,29 @@ export async function resolveHierarchyName(
   const exact = await exactStmt.first<{ id: number }>();
   if (exact) return exact.id;
 
-  // Step 2: 模糊匹配（不受 parent_id 约束）
+  // Step 2: 模糊匹配 name_norm（不受 parent_id 约束）
   const fuzzyStmt = queryByNameNormFuzzy(db, nameNorm);
   const fuzzyResult = await fuzzyStmt.all<{ id: number; parent_id: number | null }>();
   if (fuzzyResult.results && fuzzyResult.results.length > 0) {
     if (parentId !== null) {
-      // 在候选列表中优先找 parent_id 匹配的
       const matched = fuzzyResult.results.find(r => r.parent_id === parentId);
       if (matched) return matched.id;
     }
-    // 取第一个候选
     return fuzzyResult.results[0].id;
   }
+
+  // Step 3: name LIKE 兜底 — 当 name_norm 与预期不一致时，直接搜原始名称
+  const likeStmt = db
+    .prepare(
+      `SELECT l.id
+       FROM location_names n
+       INNER JOIN locations l ON n.location_id = l.id
+       WHERE n.name LIKE ?1 AND l.is_active = 1
+       LIMIT 1`,
+    )
+    .bind(`%${trimmed}%`);
+  const likeResult = await likeStmt.first<{ id: number }>();
+  if (likeResult) return likeResult.id;
 
   throw new Error(`Cannot resolve: "${trimmed}"`);
 }

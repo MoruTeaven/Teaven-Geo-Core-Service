@@ -294,7 +294,12 @@ router.get('/geo/search', async (req: Request, env: Env) => {
       parent_id: parentId,
     });
   } catch (e: any) {
-    return respond({ error: e.message }, 404);
+    const errMsg = e?.message || String(e);
+    console.error(`[geo/search] ${errMsg}`, JSON.stringify({
+      rawInput, tokens, hierarchy, searchToken,
+      cause: e?.cause?.message,
+    }));
+    return respond({ error: errMsg }, 404);
   }
 });
 
