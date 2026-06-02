@@ -43,11 +43,8 @@ export function normalizeName(name: string): string {
   // 去掉前后缀
   normalized = normalized.replace(GLOBAL_SUFFIX_PATTERN, '');
   
-  // 再次清理多余空格和特殊字符
-  normalized = normalized
-    .replace(/\s+/g, ' ')   // 合并多个空格
-    .replace(/[^\w\s\-]/g, '') // 去掉特殊字符（保留字母数字空格和连字符）
-    .trim();
+  // 清理多余空格
+  normalized = normalized.replace(/\s+/g, ' ').trim();
   
   return normalized;
 }

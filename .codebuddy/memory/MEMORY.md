@@ -38,3 +38,4 @@ lang → en → zh
 
 ## 已知问题 & 修复记录
 - **2026-06-01**: 修复 `/geo/search` 接口始终返回空结果的问题。原因：搜索查询了 `location_search` 表，但 `process-geoname.js` 导入脚本从未向该表写入数据（表仅供未来扩展预留）。修复方式：改为直接从 `location_names` 表模糊匹配 `name` 字段。
+- **2026-06-02**: 修复 `normalizeName` 函数导致中文 `name_norm` 全部为空字符串的致命 BUG。原因：`replace(/[^\\w\\s\\-]/g, '')` 中的 `\\w` 只匹配 ASCII 字母数字，中文等 Unicode 字符被误删。已在 `src/utils/normalize.ts` 和 `scripts/process-geoname.js` 两处移除该正则。注意 `normalizeSearchTerm` 之前已正确跳过此过滤。修复后需重新执行 `process-geoname.js` 生成新的 seed.sql 并重新导入数据库。

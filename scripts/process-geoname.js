@@ -56,7 +56,6 @@ function normalizeName(name) {
     .toLowerCase()
     .replace(ADMIN_SUFFIX_REGEX, '')
     .replace(/\s+/g, ' ')
-    .replace(/[^\w\s\-]/g, '')
     .trim();
 }
 
