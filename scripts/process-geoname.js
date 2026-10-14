@@ -16,6 +16,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
+import { normalizeName } from '../shared/normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -48,16 +49,8 @@ const names = [];
 /** @type {{parent_id:number, child_id:number, type:string}[]} */
 const hierarchies = [];
 
-// 行政后缀正则
-const ADMIN_SUFFIX_REGEX = /(省|市|区|县|自治区|特别行政区|自治州|自治县|镇|乡|村|province|city|district|county|state|prefecture|autonomous region|special administrative region|municipality|town|township|village|ward|都|道|府|県|町|村)$/i;
-
-function normalizeName(name) {
-  return name
-    .toLowerCase()
-    .replace(ADMIN_SUFFIX_REGEX, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// 归一化规则来自 shared/normalize.mjs（与 src/utils/normalize.ts 共用同一实现）
+// 切勿在此处另写一份：历史上两处规则不等价，导致写库与查询结果对不上。
 
 function mapLang(isoLang) {
   if (TARGET_LANGS.has(isoLang)) {

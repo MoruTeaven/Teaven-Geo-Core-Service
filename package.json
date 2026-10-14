@@ -10,13 +10,17 @@
     "db:migrate": "wrangler d1 execute teaven-geo-db --file=./db/migrations/001_init.sql",
     "db:migrate:local": "wrangler d1 execute teaven-geo-db --local --file=./db/migrations/001_init.sql",
     "db:seed": "node scripts/import-geoname.js",
-    "kv:create": "wrangler kv:namespace create GEO_CACHE"
+    "kv:create": "wrangler kv:namespace create GEO_CACHE",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "itty-router": "^5.0.18"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
     "sql.js": "^1.14.1",
+    "typescript": "^5.7.2",
     "wrangler": "^3.80.0"
   }
 }
