@@ -141,7 +141,7 @@ export async function resolvePath(
         level: string;
       }>();
 
-      if (fuzzyResult.results) {
+      if (fuzzyResult.results && fuzzyResult.results.length > 0) {
         if (parentId !== null) {
           // 非第一级：在候选列表中优先找 parent_id 匹配的
           const matched = fuzzyResult.results.find(
