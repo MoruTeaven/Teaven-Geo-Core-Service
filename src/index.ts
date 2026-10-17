@@ -283,7 +283,7 @@ router.get('/geo/search', async (req: Request, env: Env) => {
     // ———— 多 token：逐级解析层级面包屑，在最后一个 parent 下搜索 ————
     let parentId: number | null = null;
     for (const name of hierarchy) {
-      parentId = await resolveHierarchyName(env.DB, name, parentId);
+      parentId = await resolveHierarchyName(env.DB, name, parentId, lang);
     }
 
     const results = await searchChildren(env.DB, parentId!, searchToken, lang);
