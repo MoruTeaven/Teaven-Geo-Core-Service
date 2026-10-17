@@ -68,6 +68,7 @@ export interface ResolveResult {
   level: string;
   path_tokens: string[];
   cached: boolean;
+  partial?: boolean;
 }
 
 export async function resolvePath(
@@ -122,6 +123,7 @@ export async function resolvePath(
   let parentId: number | null = null;
   let lastId: number | null = null;
   let lastLevel: string = 'unknown';
+  let partialMatch = false;
 
   for (let i = 0; i < normalizedTokens.length; i++) {
     const nameNorm = normalizedTokens[i];
@@ -150,16 +152,22 @@ export async function resolvePath(
           } else if (fuzzyResult.results.length === 1) {
             result = fuzzyResult.results[0];
           }
-        } else {
-          // 第一级 token：直接取第一个候选（通常是最合理的匹配）
+        } else if (fuzzyResult.results.length === 1) {
+          // 第一级 token：仅当候选唯一时取用
           result = fuzzyResult.results[0];
+        } else {
+          // 多候选无法消歧，报错而非静默取第一个
+          throw new Error(
+            `Ambiguous name "${tokens[i]}": ${fuzzyResult.results.length} candidates, please specify a more precise path`,
+          );
         }
       }
     }
 
     if (!result) {
-      // 部分匹配：返回最后匹配到的节点
+      // 部分匹配：返回最后匹配到的节点（但不写缓存）
       if (lastId !== null) {
+        partialMatch = true;
         break;
       }
       throw new Error(`Cannot resolve token: "${tokens[i]}" (normalized: "${nameNorm}")`);
@@ -174,24 +182,27 @@ export async function resolvePath(
     throw new Error('Path resolution failed');
   }
 
-  // Step 4: 写入缓存（双写 KV + D1）
-  const cacheEntry: CacheEntry = {
-    location_id: lastId,
-    level: lastLevel,
-    cached_at: Date.now(),
-  };
+  // Step 4: 写入缓存（双写 KV + D1）—— 部分匹配不写缓存
+  if (!partialMatch) {
+    const cacheEntry: CacheEntry = {
+      location_id: lastId,
+      level: lastLevel,
+      cached_at: Date.now(),
+    };
 
-  // 异步双写，不阻塞响应
-  await Promise.allSettled([
-    kvSet(kv, pathKey, cacheEntry),
-    upsertPathCache(db, pathKey, lastId).run(),
-  ]);
+    // 异步双写，不阻塞响应
+    await Promise.allSettled([
+      kvSet(kv, pathKey, cacheEntry),
+      upsertPathCache(db, pathKey, lastId).run(),
+    ]);
+  }
 
   return {
     location_id: lastId,
     level: lastLevel,
     path_tokens: tokens,
     cached: false,
+    partial: partialMatch || undefined,
   };
 }
 
@@ -429,6 +440,7 @@ export async function resolveHierarchyName(
   db: D1Database,
   nameOrId: string,
   parentId: number | null,
+  lang: string = 'zh',
 ): Promise<number> {
   const trimmed = nameOrId.trim();
   if (!trimmed) throw new Error('Empty hierarchy name');
@@ -466,19 +478,25 @@ export async function resolveHierarchyName(
       const matched = fuzzyResult.results.find(r => r.parent_id === parentId);
       if (matched) return matched.id;
     }
-    return fuzzyResult.results[0].id;
+    // 仅当候选唯一时取用，多候选留给 Step 3 LIKE 兜底
+    if (fuzzyResult.results.length === 1) {
+      return fuzzyResult.results[0].id;
+    }
   }
 
-  // Step 3: name LIKE 兜底 — 当 name_norm 与预期不一致时，直接搜原始名称
+  // Step 3: name LIKE 兜底 — 按 lang 过滤，优先精确匹配
   const likeStmt = db
     .prepare(
       `SELECT l.id
        FROM location_names n
        INNER JOIN locations l ON n.location_id = l.id
-       WHERE n.name LIKE ?1 AND l.is_active = 1
+       WHERE n.name LIKE ?1 AND n.lang = ?2 AND l.is_active = 1
+       ORDER BY
+         CASE WHEN n.name = ?3 THEN 0 ELSE 1 END,
+         n.name ASC
        LIMIT 1`,
     )
-    .bind(`%${trimmed}%`);
+    .bind(`%${trimmed}%`, lang, trimmed);
   const likeResult = await likeStmt.first<{ id: number }>();
   if (likeResult) return likeResult.id;
 
