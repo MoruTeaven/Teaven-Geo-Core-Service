@@ -103,7 +103,8 @@ node scripts/import-d1-remote.mjs --swap      # 单请求原子切换（DROP + R
 导入完成后跑线上回归（中文/日文的 /geo/resolve 与 /geo/search）：
 
 ```bash
-node scripts/regress-zh-query.mjs
+node scripts/regress-zh-query.mjs     # 打线上服务，会消耗 D1 每日读额度
+node scripts/regress-local-queries.mjs # 本地内存库 + 生产同款 SQL，不碰网络
 ```
 
 ### 6. 启动本地开发

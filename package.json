@@ -16,6 +16,7 @@
     "db:verify-seed": "node scripts/verify-seed.mjs",
     "db:import:remote": "node scripts/import-d1-remote.mjs",
     "regress:zh": "node scripts/regress-zh-query.mjs",
+    "regress:local": "node scripts/regress-local-queries.mjs",
     "kv:create": "wrangler kv:namespace create GEO_CACHE",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/**/*.test.mjs\""
