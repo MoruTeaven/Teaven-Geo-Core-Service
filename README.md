@@ -70,7 +70,7 @@ npx wrangler d1 execute teaven-geo-db --file=db/migrations/001_init.sql
 # 一键导入（本地）
 node scripts/import-geoname.js --local
 
-# 一键导入（远程）
+# 一键导入（远程，生产）
 node scripts/import-geoname.js --remote
 ```
 
@@ -83,8 +83,27 @@ node scripts/download-geoname.js
 # 仅处理数据生成 SQL
 node scripts/process-geoname.js
 
-# 手动导入
+# 本地校验生成的 seed.sql（空 name_norm 必须为 0，否则导入也是坏数据）
+node scripts/verify-seed.mjs
+
+# 手动导入（本地）
 npx wrangler d1 execute teaven-geo-db --local --file=data/processed/seed.sql
+```
+
+远程导入不要用 `wrangler d1 execute --file`：50 MB 级 SQL 会让 wrangler 在 workerd 层崩溃，
+且中途失败无法续传。生产一律走分批脚本（需要 `CLOUDFLARE_API_TOKEN` / `CF_ACCOUNT_ID` / `D1_DATABASE_ID`）：
+
+```bash
+node scripts/import-d1-remote.mjs --prepare   # 建影子表 locations_new / location_names_new
+node scripts/import-d1-remote.mjs --load      # 分批灌数据，进度落盘，可重复执行续传
+node scripts/import-d1-remote.mjs --verify    # 校验影子表：空 name_norm 必须为 0
+node scripts/import-d1-remote.mjs --swap      # 单请求原子切换（DROP + RENAME + 建索引 + 清 path_cache）
+```
+
+导入完成后跑线上回归（中文/日文的 /geo/resolve 与 /geo/search）：
+
+```bash
+node scripts/regress-zh-query.mjs
 ```
 
 ### 6. 启动本地开发

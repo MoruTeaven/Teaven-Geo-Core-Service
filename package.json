@@ -10,6 +10,12 @@
     "db:migrate": "wrangler d1 execute teaven-geo-db --file=./db/migrations/001_init.sql",
     "db:migrate:local": "wrangler d1 execute teaven-geo-db --local --file=./db/migrations/001_init.sql",
     "db:seed": "node scripts/import-geoname.js",
+    "db:seed:local": "node scripts/import-geoname.js --local",
+    "db:seed:remote": "node scripts/import-geoname.js --remote",
+    "db:process": "node scripts/process-geoname.js",
+    "db:verify-seed": "node scripts/verify-seed.mjs",
+    "db:import:remote": "node scripts/import-d1-remote.mjs",
+    "regress:zh": "node scripts/regress-zh-query.mjs",
     "kv:create": "wrangler kv:namespace create GEO_CACHE",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/**/*.test.mjs\""
