@@ -1,17 +1,18 @@
 /**
  * GeoNames 数据一键导入脚本
- * 
+ *
  * 使用方式：
  *   # 本地 D1
  *   node scripts/import-geoname.js --local
- * 
+ *
  *   # 远程 D1
  *   node scripts/import-geoname.js --remote
- * 
+ *
  * 流程：
  *   1. 下载原始数据 (download-geoname.js)
  *   2. 处理数据生成 SQL (process-geoname.js)
- *   3. 执行 SQL 导入 D1
+ *   3. 初始化 Schema (db/migrations/001_init.sql)
+ *   4. 导入种子数据 (data/processed/seed.sql)
  */
 
 import { execSync } from 'child_process';
@@ -19,17 +20,23 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-async function runStep(name: string, cmd: string): Promise<void> {
+/**
+ * 执行一个子步骤，失败即中止整个流程
+ * @param {string} name 步骤名（用于日志）
+ * @param {string} cmd 要执行的 shell 命令
+ */
+async function runStep(name, cmd) {
   console.log(`\n[${name}]`);
   console.log(`  $ ${cmd}`);
   try {
     execSync(cmd, {
       stdio: 'inherit',
-      cwd: path.resolve(__dirname, '..'),
+      cwd: PROJECT_ROOT,
     });
-  } catch (e: any) {
-    console.error(`  [ERROR] ${name} failed: ${e.message}`);
+  } catch (e) {
+    console.error(`  [ERROR] ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);
   }
 }
@@ -50,12 +57,12 @@ async function main() {
   console.log(`Target: ${isLocal ? 'Local D1' : 'Remote D1'}`);
 
   // Step 1: 下载
-  await runStep('Step 1: Download', 'node scripts/download-geoname.js');
+  await runStep('Step 1: Download', `node "${path.join('scripts', 'download-geoname.js')}"`);
 
   // Step 2: 处理
-  await runStep('Step 2: Process', 'node scripts/process-geoname.js');
+  await runStep('Step 2: Process', `node "${path.join('scripts', 'process-geoname.js')}"`);
 
-  // Step 3: 初始化 Schema
+  // Step 3: 初始化 Schema（幂等：表已存在时 wrangler 会报错，先尝试创建，失败则视为已建）
   const localFlag = isLocal ? ' --local' : '';
   await runStep(
     'Step 3: Init Schema',

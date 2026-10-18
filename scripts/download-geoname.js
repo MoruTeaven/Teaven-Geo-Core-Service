@@ -68,7 +68,12 @@ async function downloadFile(filename) {
 }
 
 /**
- * 解压 zip 文件
+ * 解压 zip 文件（跨平台）
+ *
+ * 策略（按顺序尝试）：
+ *   1. tar -xf            —— Windows 10 1803+ / macOS / Linux 均自带 bsdtar，可解 zip
+ *   2. unzip -o           —— Linux/macOS 常见
+ *   3. powershell Expand-Archive —— 仅 Windows 兜底
  */
 function unzip(filename) {
   const zipPath = path.join(RAW_DIR, filename);
@@ -91,15 +96,32 @@ function unzip(filename) {
   }
 
   console.log(`  [UNZIP] ${filename} ...`);
-  try {
-    execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${RAW_DIR}' -Force"`, {
-      stdio: 'pipe',
-    });
-    console.log(`  [OK] ${filename} extracted`);
-  } catch (e) {
-    // 尝试用 tar 或其他方式
-    console.error(`  [WARN] Could not unzip ${filename}, try manual extraction`);
+
+  const attempts = [
+    { label: 'tar', cmd: `tar -xf "${zipPath}" -C "${RAW_DIR}"` },
+    { label: 'unzip', cmd: `unzip -o "${zipPath}" -d "${RAW_DIR}"` },
+    {
+      label: 'powershell Expand-Archive',
+      cmd: `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${RAW_DIR}' -Force"`,
+    },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      execSync(attempt.cmd, { stdio: 'pipe' });
+      if (possibleFiles.some(f => fs.existsSync(f))) {
+        console.log(`  [OK] ${filename} extracted (via ${attempt.label})`);
+        return;
+      }
+      console.log(`  [WARN] ${attempt.label} ran but produced no output, trying next`);
+    } catch (e) {
+      console.log(`  [WARN] ${attempt.label} unavailable or failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+
+  console.error(`  [ERROR] Could not unzip ${filename}. Please extract it manually:`);
+  console.error(`          ${zipPath} -> ${RAW_DIR}`);
+  process.exit(1);
 }
 
 /**

@@ -10,8 +10,56 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const D1_DIR = path.join(PROJECT_ROOT, '.wrangler', 'state', 'v3', 'd1', 'miniflare-D1DatabaseObject');
-const sqliteFiles = fs.readdirSync(D1_DIR).filter(f => f.endsWith('.sqlite'));
-const DB_PATH = path.join(D1_DIR, sqliteFiles[0]);
+
+/**
+ * 解析要写入的本地 D1 sqlite 文件：
+ *  - 命令行传 --db=<文件名> 时精确指定；
+ *  - 否则取目录下最新修改的 .sqlite（多库时避免「任意挑一个」写错目标）；
+ *  - 目录不存在或为空时报错退出，而不是静默取 undefined。
+ * @returns {string} sqlite 文件绝对路径
+ */
+function resolveDbPath() {
+  if (!fs.existsSync(D1_DIR)) {
+    console.error(`[ERROR] Local D1 directory not found: ${D1_DIR}`);
+    console.error('        Run "npm run db:create", then a --local wrangler d1 command once, first.');
+    process.exit(1);
+  }
+
+  const requested = process.argv.find(a => a.startsWith('--db='));
+  if (requested) {
+    const name = requested.slice('--db='.length).trim();
+    const p = path.join(D1_DIR, path.basename(name));
+    if (!fs.existsSync(p)) {
+      console.error(`[ERROR] Requested D1 file not found: ${p}`);
+      process.exit(1);
+    }
+    return p;
+  }
+
+  const sqliteFiles = fs
+    .readdirSync(D1_DIR)
+    .filter(f => f.endsWith('.sqlite'))
+    .map(f => ({ name: f, mtime: fs.statSync(path.join(D1_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  if (sqliteFiles.length === 0) {
+    console.error(`[ERROR] No .sqlite file found in ${D1_DIR}`);
+    process.exit(1);
+  }
+
+  if (sqliteFiles.length > 1) {
+    console.log(`  [INFO] ${sqliteFiles.length} local D1 databases found, using the most recent:`);
+    for (const f of sqliteFiles) {
+      console.log(`    - ${f.name}`);
+    }
+    console.log('  (pass --db=<file.sqlite> to pick a specific one)');
+  }
+
+  return path.join(D1_DIR, sqliteFiles[0].name);
+}
+
+const DB_PATH = resolveDbPath();
+console.log(`Target local D1 database: ${DB_PATH}`);
 
 const SCHEMA_FILE = path.join(PROJECT_ROOT, 'db', 'migrations', '001_init.sql');
 const SEED_FILE = path.join(PROJECT_ROOT, 'data', 'processed', 'seed.sql');
