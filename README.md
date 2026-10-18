@@ -83,9 +83,19 @@ node scripts/download-geoname.js
 # 仅处理数据生成 SQL
 node scripts/process-geoname.js
 
-# 手动导入
-npx wrangler d1 execute teaven-geo-db --local --file=data/processed/seed.sql
+# 手动导入（本地）：seed.sql 有 100 万行 / 50MB，必须走 import-direct.js。
+# 用 wrangler d1 execute --file 会崩在 workerd 内部（Body Timeout）。
+node scripts/import-direct.js
+
+# 手动导入（远程）
+npx wrangler d1 execute teaven-geo-db --file=data/processed/seed.sql
 ```
+
+> 通过 npm 调用一键导入时，参数必须写在 `--` 之后，否则会被 npm 吃掉、脚本收不到：
+> `npm run db:seed -- --local`；或直接使用 `npm run db:seed:local` / `npm run db:seed:remote`。
+
+首次导入约需下载 600MB 原始数据（解压后约 2.5GB），生成的
+`data/processed/seed.sql` 约 50MB，本地 D1 库约 97MB。
 
 ### 6. 启动本地开发
 
