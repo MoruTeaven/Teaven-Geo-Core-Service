@@ -253,6 +253,67 @@ export function queryParentById(db: D1Database, id: number) {
     .bind(id);
 }
 
+/**
+ * 批量获取多个节点的 parent_id（分层批量上溯用）
+ * 一次 IN 查询替代逐个 queryParentById 的 N+1 模式
+ *
+ * 注意：D1 单条语句绑定参数上限 100，调用方传入超过 100 个 id 时必须分块
+ * （geo.ts 的 fetchParentMap 已按 90 个/块分块，留有余量）
+ */
+export function queryParentsBatch(db: D1Database, ids: number[]) {
+  const placeholders = ids.map(() => '?').join(',');
+  return db
+    .prepare(
+      `SELECT id, parent_id
+       FROM locations
+       WHERE id IN (${placeholders})
+         AND is_active = 1`,
+    )
+    .bind(...ids);
+}
+
+// =============================================
+// 祖先链查询（递归 CTE）
+// =============================================
+
+/**
+ * 一次查询获取某节点到根的完整祖先链（含自身）
+ *
+ * 用 SQLite 递归 CTE 替代逐级 queryLocationById/queryParentById 的 N+1 上溯：
+ * - 起点为自身（depth 0），不带 is_active 过滤（与 queryLocationById 语义一致）
+ * - 递归步骤带 is_active = 1 过滤（与 queryParentById 语义一致），
+ *   inactive / 不存在的祖先使链在此截断
+ * - depth 上限防坏数据成环导致死循环/死递归
+ *
+ * 返回按 depth 升序（自身在前、根在后），需要面包屑顺序（根在前）时由调用方倒序
+ */
+export function queryAncestorChain(db: D1Database, id: number, maxDepth: number) {
+  return db
+    .prepare(
+      `WITH RECURSIVE chain(id, parent_id, level, depth) AS (
+         SELECT id, parent_id, level, 0
+         FROM locations
+         WHERE id = ?1
+         UNION ALL
+         SELECT l.id, l.parent_id, l.level, c.depth + 1
+         FROM locations l
+         INNER JOIN chain c ON l.id = c.parent_id
+         WHERE c.depth < ?2
+           AND l.is_active = 1
+       )
+       SELECT c.id, c.level, c.depth,
+              zn.name AS name_zh,
+              en.name AS name_en,
+              jn.name AS name_ja
+       FROM chain c
+       LEFT JOIN location_names zn ON c.id = zn.location_id AND zn.lang = 'zh'
+       LEFT JOIN location_names en ON c.id = en.location_id AND en.lang = 'en'
+       LEFT JOIN location_names jn ON c.id = jn.location_id AND jn.lang = 'ja'
+       ORDER BY c.depth ASC`,
+    )
+    .bind(id, maxDepth);
+}
+
 // =============================================
 // 批量查询（预热热点城市等场景）
 // =============================================
