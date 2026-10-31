@@ -28,10 +28,12 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
-/** 解析环境变量配置，非法值回退默认（120 次 / 60 秒） */
+/** 解析环境变量配置，非法值回退默认（120 次 / 60 秒）；显式 0 由最小值兜底为 1 */
 export function parseRateLimitConfig(envMax?: string, envWindow?: string): RateLimitConfig {
-  const max = Math.max(1, parseInt(envMax || '', 10) || 120);
-  const windowMs = Math.max(1000, parseInt(envWindow || '', 10) || 60000);
+  const parsedMax = parseInt(envMax || '', 10);
+  const max = Math.max(1, Number.isFinite(parsedMax) ? parsedMax : 120);
+  const parsedWindow = parseInt(envWindow || '', 10);
+  const windowMs = Math.max(1000, Number.isFinite(parsedWindow) ? parsedWindow : 60000);
   return { max, windowMs };
 }
 

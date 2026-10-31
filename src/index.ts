@@ -67,8 +67,9 @@ const router = AutoRouter({
 /**
  * 统一 CORS 注入出口：所有响应（含错误与预检）都经过这里
  * 按 env.ALLOWED_ORIGINS 白名单决定 allow-origin，避免散落硬编码
+ * 注意：itty-router v5 finally 链的调用签名为 (response, request, ...args)
  */
-function applyCorsHeaders(req: Request, res: Response, env?: Env): Response {
+function applyCorsHeaders(res: Response, req: { headers: Headers }, env?: Env): Response {
   const allow = resolveAllowOrigin(req.headers.get('Origin'), parseAllowedOrigins(env?.ALLOWED_ORIGINS));
   if (!allow) return res;
 
