@@ -76,6 +76,15 @@ export interface SearchResponse {
   query: string;
 }
 
+// 稳定错误码（对外契约，见 src/utils/errors.ts）
+export type ApiErrorCode =
+  | 'INVALID_PARAM'       // 400 客户端参数错误
+  | 'NOT_FOUND'           // 404 资源不存在
+  | 'AMBIGUOUS_MATCH'     // 422 语义歧义（地名多候选无法唯一解析）
+  | 'RATE_LIMITED'        // 429 触发速率限制
+  | 'INTERNAL_ERROR'      // 500 未知内部错误（细节仅进日志）
+  | 'SERVICE_UNAVAILABLE'; // 503 依赖不可用
+
 export interface HealthResponse {
   status: 'healthy' | 'unhealthy';
   timestamp: number;
@@ -88,5 +97,6 @@ export interface HealthResponse {
 
 export interface ErrorResponse {
   error: boolean;
+  code: ApiErrorCode;
   message: string;
 }

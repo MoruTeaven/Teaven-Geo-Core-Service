@@ -16,6 +16,18 @@ id = "aff987c5443c4cf2bcfe61fa8decef8f"
 DEFAULT_LANG = "zh"
 CACHE_TTL = 86400
 HOT_CITIES = "北京,上海,东京,New York,London,Paris,Singapore,Sydney"
+# CORS 白名单（逗号分隔）。留空/删除 = 不限制（Access-Control-Allow-Origin: *，公开读取）
+# ALLOWED_ORIGINS = "https://teaven.example,https://app.teaven.example"
+# 单 IP 速率限制：窗口内最大请求数 / 窗口长度毫秒（默认 120 次 / 60000 毫秒）
+RATE_LIMIT_MAX = "120"
+RATE_LIMIT_WINDOW_MS = "60000"
+
+# 可选：Cloudflare Rate Limiting Binding（跨 isolate 全局精确限流，生产建议启用）。
+# 启用后取消注释，Worker 会自动优先使用该绑定；未配置时回退 isolate 内存窗口。
+# [[unsafe.bindings]]
+# name = "RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "1001"
 
 [observability]
 enabled = true
