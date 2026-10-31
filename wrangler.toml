@@ -14,8 +14,8 @@ id = "aff987c5443c4cf2bcfe61fa8decef8f"
 
 [vars]
 DEFAULT_LANG = "zh"
+# KV 缓存过期秒数（Worker 会解析并传入 kvSet；KV 下限 60，非法值回退 86400）
 CACHE_TTL = 86400
-HOT_CITIES = "北京,上海,东京,New York,London,Paris,Singapore,Sydney"
 # CORS 白名单（逗号分隔）。留空/删除 = 不限制（Access-Control-Allow-Origin: *，公开读取）
 # ALLOWED_ORIGINS = "https://teaven.example,https://app.teaven.example"
 # 单 IP 速率限制：窗口内最大请求数 / 窗口长度毫秒（默认 120 次 / 60000 毫秒）

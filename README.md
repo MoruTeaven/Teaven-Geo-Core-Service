@@ -337,8 +337,7 @@ GET /health
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `DEFAULT_LANG` | API 默认返回语言 | `zh` |
-| `CACHE_TTL` | KV 缓存过期时间（秒） | `86400` |
-| `HOT_CITIES` | 预热热点城市 | `"北京,上海,东京,New York,London,Paris,Singapore,Sydney"` |
+| `CACHE_TTL` | KV 路径缓存过期时间（秒，下限 60，非法值回退默认） | `86400` |
 | `ALLOWED_ORIGINS` | CORS 白名单（逗号分隔）；留空 = 不限制 | 未限制（`*`） |
 | `RATE_LIMIT_MAX` | 单 IP 在限流窗口内的最大请求数（`/geo/*`） | `120` |
 | `RATE_LIMIT_WINDOW_MS` | 限流窗口长度（毫秒） | `60000` |
@@ -369,13 +368,14 @@ CACHE_TTL = 86400
 | `AMBIGUOUS_MATCH` | 422 | 地名歧义，无法唯一解析（请提供更精确的路径） |
 | `RATE_LIMITED` | 429 | 触发速率限制 |
 | `INTERNAL_ERROR` | 500 | 内部错误（含数据库故障），细节仅记录在服务端日志 |
-| `SERVICE_UNAVAILABLE` | 503 | 依赖不可用（健康检查失败时） |<parameter name="explanation" string="true">README 增加配置说明章节，说明 DEFAULT_LANG 自定义方式
+| `SERVICE_UNAVAILABLE` | 503 | 依赖不可用（健康检查失败时） |
 
-1. **KV 缓存优先** - 热点路径秒级返回，TTL 24h
+### 性能与缓存
+
+1. **KV 缓存优先** - 热点路径秒级返回，TTL 默认 24h，可用 `CACHE_TTL` 配置
 2. **D1 path_cache 双写** - KV miss 时 D1 兜底
 3. **索引覆盖** - 所有查询命中 index
 4. **名称归一化** - `name_norm` 字段预计算，避免运行时正则
-5. **热点预热** - 支持 `warmHotCitiesCache` 预热高频城市
 
 ## 数据规范
 
@@ -395,12 +395,16 @@ teaven-geo-core-service/
 │   ├── services/
 │   │   └── geo.ts            # 业务服务层（核心逻辑）
 │   └── utils/
-│       ├── normalize.ts      # 名称归一化工具
-│       ├── cache.ts          # KV 缓存策略
-│       └── response.ts       # API 响应格式化
+│       ├── normalize.ts      # 名称归一化工具（shared/normalize.mjs 的运行时门面）
+│       ├── cache.ts          # KV 缓存策略（TTL 解析 + 读写）
+│       ├── cors.ts           # CORS 白名单收敛 + 预检响应
+│       ├── errors.ts         # 错误契约（稳定错误码 + 对外安全收敛）
+│       ├── like.ts           # LIKE 通配符转义
+│       └── s2t.ts            # 简繁转换
 ├── db/
 │   └── migrations/
-│       └── 001_init.sql      # D1 Schema 迁移
+│       ├── 001_init.sql        # D1 Schema 迁移
+│       └── 002_drop_location_search.sql  # 存量库清理未用搜索索引表
 ├── scripts/
 │   ├── download-geoname.js   # GeoNames 数据下载
 │   ├── process-geoname.js    # 数据处理 → SQL 生成

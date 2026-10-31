@@ -16,12 +16,11 @@ import {
   queryByNameNormFuzzy,
   queryPathCache,
   upsertPathCache,
-  queryNameByLang,
   queryParentById,
   queryParentsBatch,
   queryAncestorChain,
   type ChildResult,
-  type LocationDetail,
+  type LocationByIdRow,
 } from '../db/queries';
 import {
   normalizeName,
@@ -80,6 +79,7 @@ export async function resolvePath(
   kv: KVNamespace,
   path: string,
   lang: string = 'zh',
+  kvTtlSeconds: number = 86400,
 ): Promise<ResolveResult> {
   // 预处理路径
   const tokens = parsePathTokens(path);
@@ -112,7 +112,7 @@ export async function resolvePath(
         location_id: cacheResult.location_id,
         level: loc.level,
         cached_at: Date.now(),
-      });
+      }, kvTtlSeconds);
     }
     return {
       location_id: cacheResult.location_id,
@@ -196,7 +196,7 @@ export async function resolvePath(
 
     // 异步双写，不阻塞响应
     await Promise.allSettled([
-      kvSet(kv, pathKey, cacheEntry),
+      kvSet(kv, pathKey, cacheEntry, kvTtlSeconds),
       upsertPathCache(db, pathKey, lastId).run(),
     ]);
   }
@@ -214,6 +214,12 @@ export async function resolvePath(
 // ③ 单点查询
 // =============================================
 
+/**
+ * /geo/get 对外响应形状（唯一定义处）
+ * 原先与 src/types.ts 的 LocationDetail、db/queries.ts 的 LocationDetail
+ * 三处重复定义，已收敛：DB 行形状 = queries.ts 的 LocationByIdRow，
+ * 响应形状 = 本接口。
+ */
 export interface GetResult {
   id: number;
   parent_id: number | null;
@@ -235,17 +241,7 @@ export async function getLocation(
   preferredLang: string = 'zh',
 ): Promise<GetResult> {
   const stmt = queryLocationById(db, id);
-  const result = await stmt.first<{
-    id: number;
-    parent_id: number | null;
-    level: string;
-    country_code: string | null;
-    latitude: number | null;
-    longitude: number | null;
-    name_zh: string | null;
-    name_en: string | null;
-    name_ja: string | null;
-  }>();
+  const result = await stmt.first<LocationByIdRow>();
 
   if (!result) {
     throw notFound(`Location not found: ${id}`);
@@ -361,32 +357,20 @@ export async function isSubordinate(
 ): Promise<SubordinateResult> {
   // 获取 descendant 的信息
   const descStmt = queryLocationById(db, descendantId);
-  const descLoc = await descStmt.first<{
-    id: number;
-    level: string;
-    name_zh: string | null;
-    name_en: string | null;
-    name_ja: string | null;
-  }>();
+  const descLoc = await descStmt.first<LocationByIdRow>();
   if (!descLoc) {
     throw notFound(`Location not found: ${descendantId}`);
   }
 
   // 获取 ancestor 的信息
   const ancStmt = queryLocationById(db, ancestorId);
-  const ancLoc = await ancStmt.first<{
-    id: number;
-    level: string;
-    name_zh: string | null;
-    name_en: string | null;
-    name_ja: string | null;
-  }>();
+  const ancLoc = await ancStmt.first<LocationByIdRow>();
   if (!ancLoc) {
     throw notFound(`Location not found: ${ancestorId}`);
   }
 
   // 名称获取辅助函数
-  const getName = (loc: { name_zh: string | null; name_en: string | null; name_ja: string | null }): string => {
+  const getName = (loc: Pick<LocationByIdRow, 'name_zh' | 'name_en' | 'name_ja'>): string => {
     const nameMap: Record<string, string | null> = { zh: loc.name_zh, en: loc.name_en, ja: loc.name_ja };
     return nameMap[lang] || loc.name_en || loc.name_zh || '';
   };

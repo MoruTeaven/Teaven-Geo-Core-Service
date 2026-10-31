@@ -41,16 +41,9 @@ CREATE TABLE IF NOT EXISTS path_cache (
 
 CREATE INDEX IF NOT EXISTS idx_path_location ON path_cache(location_id);
 
--- 4️⃣ 搜索索引（未来扩展）
-CREATE TABLE IF NOT EXISTS location_search (
-  token TEXT NOT NULL,
-  location_id INTEGER NOT NULL,
-  lang TEXT NOT NULL,
-  PRIMARY KEY (token, location_id, lang)
-);
-
-CREATE INDEX IF NOT EXISTS idx_search_token ON location_search(token);
-CREATE INDEX IF NOT EXISTS idx_search_location ON location_search(location_id);
+-- （原 4️⃣ 搜索索引表 location_search 已移除：从未被查询，搜索实际走
+--    location_names.name_norm 精确匹配 + name LIKE；存量库请执行
+--    002_drop_location_search.sql 清理）
 
 -- =============================================
 -- 视图：常用查询视图
