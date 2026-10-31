@@ -18,6 +18,8 @@ import {
   upsertPathCache,
   queryNameByLang,
   queryParentById,
+  queryParentsBatch,
+  queryAncestorChain,
   type ChildResult,
   type LocationDetail,
 } from '../db/queries';
@@ -287,45 +289,47 @@ export async function getLocation(
 // ④ 获取父级链（面包屑）
 // =============================================
 
+/** 祖先链最大深度：行政层级实际 ≤6 层，留余量并防止坏数据成环导致死递归 */
+const ANCESTOR_MAX_DEPTH = 10;
+
+/**
+ * 一次递归 CTE 查询拿到完整祖先链（含自身），替代逐级上溯的 N+1 查询
+ * 语义与旧实现一致：
+ * - 起点（含 inactive）始终参与，祖先按 is_active 过滤，链在缺失/停用处截断
+ * - 名称按 lang 选取，en/zh 兜底；zh-Hant 用 zh 数据并转繁体
+ * - 返回顺序：根在前、自身在后
+ */
 export async function getAncestors(
   db: D1Database,
   id: number,
   lang: string = 'zh',
 ): Promise<Array<{ id: number; name: string; level: string }>> {
-  const ancestors: Array<{ id: number; name: string; level: string }> = [];
-  let currentId: number | null = id;
+  const result = await queryAncestorChain(db, id, ANCESTOR_MAX_DEPTH).all<{
+    id: number;
+    level: string;
+    name_zh: string | null;
+    name_en: string | null;
+    name_ja: string | null;
+  }>();
+
   const needConvert = isTraditionalChinese(lang);
+  const lookupLang = needConvert ? 'zh' : lang;
 
-  while (currentId !== null) {
-    const locStmt = queryLocationById(db, currentId);
-    const loc = await locStmt.first<{
-      id: number;
-      parent_id: number | null;
-      level: string;
-      name_zh: string | null;
-      name_en: string | null;
-      name_ja: string | null;
-    }>();
+  // CTE 按 depth 升序返回（自身→根），面包屑需要根→自身
+  const rows = (result.results || []).slice().reverse();
 
-    if (!loc) break;
-
+  return rows.map(loc => {
     const nameMap: Record<string, string | null> = {
       zh: loc.name_zh,
       en: loc.name_en,
       ja: loc.name_ja,
     };
-    // zh-Hant 时用 zh 数据
-    const lookupLang = needConvert ? 'zh' : lang;
     let name = nameMap[lookupLang] || loc.name_en || loc.name_zh || '';
     if (needConvert) {
       name = toTraditional(name);
     }
-
-    ancestors.unshift({ id: loc.id, name, level: loc.level });
-    currentId = loc.parent_id;
-  }
-
-  return ancestors;
+    return { id: loc.id, name, level: loc.level };
+  });
 }
 
 // =============================================
@@ -395,30 +399,28 @@ export async function isSubordinate(
     };
   }
 
-  // 从 descendant 向上遍历 parent_id，查找 ancestor
-  let currentId: number | null = descLoc.id;
-  let depth = 0;
-  let found = false;
+  // 一次递归 CTE 拿到整条祖先链（含自身 depth 0，祖先带 is_active 过滤），
+  // 替代逐级 queryParentById 的 N+1 上溯；depth 上限同时防坏数据成环死循环
+  const chain = await queryAncestorChain(db, descendantId, ANCESTOR_MAX_DEPTH).all<{
+    id: number;
+    depth: number;
+  }>();
 
-  while (currentId !== null) {
-    const parentStmt = queryParentById(db, currentId);
-    const parent = await parentStmt.first<{ id: number; parent_id: number | null; level: string }>();
-    if (!parent) break;
-
-    if (parent.id === ancestorId) {
-      found = true;
+  // 链中 depth 0 是 descendant 自身（前面已排除同节点），
+  // 祖先从 depth 1 开始；旧语义：直接父级命中时 depth = 0
+  let depth = -1;
+  for (const row of chain.results || []) {
+    if (row.depth >= 1 && row.id === ancestorId) {
+      depth = row.depth - 1;
       break;
     }
-
-    currentId = parent.parent_id;
-    depth++;
   }
 
   return {
-    is_subordinate: found,
+    is_subordinate: depth >= 0,
     descendant: { id: descLoc.id, name: getName(descLoc), level: descLoc.level },
     ancestor: { id: ancLoc.id, name: getName(ancLoc), level: ancLoc.level },
-    depth: found ? depth : -1,
+    depth,
   };
 }
 
@@ -503,11 +505,43 @@ export async function resolveHierarchyName(
   throw new Error(`Cannot resolve: "${trimmed}"`);
 }
 
+/** D1 单条语句绑定参数上限 100，按 90 分块留余量 */
+const IN_CLAUSE_CHUNK_SIZE = 90;
+
+/**
+ * 批量查一批 id 的 parent_id，返回 id → parent_id 映射
+ * 仅含 is_active = 1 的行（与 queryParentById 过滤语义一致）
+ */
+async function fetchParentMap(
+  db: D1Database,
+  ids: number[],
+): Promise<Map<number, number | null>> {
+  const map = new Map<number, number | null>();
+  for (let i = 0; i < ids.length; i += IN_CLAUSE_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + IN_CLAUSE_CHUNK_SIZE);
+    const result = await queryParentsBatch(db, chunk).all<{
+      id: number;
+      parent_id: number | null;
+    }>();
+    for (const row of result.results || []) {
+      map.set(row.id, row.parent_id);
+    }
+  }
+  return map;
+}
+
 /**
  * 在指定父节点的**整个子树**中搜索匹配名称的后代
  *
- * 分两步：① 全局搜名字 → ② 逐个验证祖先链是否包含 parentId
- * 避免递归 CTE 在 D1 上的兼容性问题
+ * 分两步：① 全局搜名字 → ② 验证祖先链是否包含 parentId
+ *
+ * ② 为分层批量上溯：先把全部候选的祖先按层收集成 parent 映射
+ * （每层一次 `WHERE id IN (...)` 批量查询，最多 5 层），
+ * 再按候选顺序判定，替代旧版逐候选串行上溯的 N+1 模式
+ * （单次搜索最多 ~250 次 D1 查询 → 现在最多 6 次）。
+ * 判定语义与旧版一致：候选的 parent 及向上最多 5 层祖先命中即保留，
+ * 链在缺失/inactive 处截断，按候选顺序取前 20 条。
+ * 全部为普通 SELECT，未依赖递归 CTE（规避 D1 兼容性顾虑）。
  */
 export async function searchChildren(
   db: D1Database,
@@ -538,30 +572,48 @@ export async function searchChildren(
   }>();
   const candidates = result.results || [];
 
-  // Step 2: 过滤 — 只保留 parentId 在祖先链中的候选
+  // Step 2: 分层批量上溯，构建已探明节点的 parent 映射
+  // 只追「parent 存在且不是目标」的候选链：直接子节点本地即命中，顶级节点不可能命中
+  const parentOf = new Map<number, number | null>();
+  const pendingParents = candidates
+    .filter(c => c.parent_id !== null && c.parent_id !== parentId)
+    .map(c => c.parent_id as number);
+
+  if (pendingParents.length > 0) {
+    let frontier = [...new Set(pendingParents)];
+    // 最多 5 层：与旧版「最多向上追溯 5 层」一致
+    for (let depth = 0; depth < 5 && frontier.length > 0; depth++) {
+      const parentMap = await fetchParentMap(db, frontier);
+      const nextFrontier: number[] = [];
+      for (const [id, pid] of parentMap) {
+        if (!parentOf.has(id)) {
+          parentOf.set(id, pid);
+          // 链上出现 parentId 即命中，无需继续向上探明
+          if (pid !== null && pid !== parentId) nextFrontier.push(pid);
+        }
+      }
+      frontier = [...new Set(nextFrontier)];
+    }
+  }
+
+  /** 候选的祖先链（parent + 最多 5 次上溯）是否包含 parentId */
+  const isUnderAncestry = (startId: number | null): boolean => {
+    let cursor: number | null = startId;
+    for (let hop = 0; hop <= 5 && cursor !== null; hop++) {
+      if (cursor === parentId) return true;
+      if (hop === 5) break;
+      const next = parentOf.get(cursor);
+      if (next === undefined) return false; // 链在缺失/inactive 处截断
+      cursor = next;
+    }
+    return false;
+  };
+
+  // Step 3: 按候选顺序保留命中者，取前 20（与旧版顺序语义一致）
   const filtered: Array<{ location_id: number; name: string; level: string; country_code: string | null }> = [];
 
   for (const c of candidates) {
-    let cursor: number | null = c.parent_id;
-    let found = false;
-
-    // 直接子节点快速检查
-    if (cursor === parentId) {
-      found = true;
-    } else {
-      // 最多向上追溯 5 层（cover admin3→admin2→admin1→country）
-      for (let i = 0; i < 5 && cursor !== null; i++) {
-        const parentRow = await queryParentById(db, cursor).first<{ parent_id: number | null }>();
-        if (!parentRow) break;
-        cursor = parentRow.parent_id;
-        if (cursor === parentId) {
-          found = true;
-          break;
-        }
-      }
-    }
-
-    if (found) {
+    if (c.parent_id === parentId || isUnderAncestry(c.parent_id)) {
       filtered.push({
         location_id: c.location_id,
         name: c.name,
