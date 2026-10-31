@@ -33,6 +33,8 @@ import {
 } from '../utils/normalize';
 import { toTraditional } from '../utils/s2t';
 import { kvGet, kvSet, type CacheEntry } from '../utils/cache';
+import { invalidParam, notFound, ambiguousMatch } from '../utils/errors';
+import { likePrefix, likeContains, SQLITE_LIKE_ESCAPE } from '../utils/like';
 
 // =============================================
 // ① 获取子级（级联选择）
@@ -82,7 +84,7 @@ export async function resolvePath(
   // 预处理路径
   const tokens = parsePathTokens(path);
   if (tokens.length === 0) {
-    throw new Error('Empty path');
+    throw invalidParam('path is required');
   }
 
   const pathKey = buildPathKey(tokens);
@@ -159,8 +161,8 @@ export async function resolvePath(
           result = fuzzyResult.results[0];
         } else {
           // 多候选无法消歧，报错而非静默取第一个
-          throw new Error(
-            `Ambiguous name "${tokens[i]}": ${fuzzyResult.results.length} candidates, please specify a more precise path`,
+          throw ambiguousMatch(
+            `Ambiguous match for "${tokens[i]}", please specify a more precise path`,
           );
         }
       }
@@ -172,7 +174,7 @@ export async function resolvePath(
         partialMatch = true;
         break;
       }
-      throw new Error(`Cannot resolve token: "${tokens[i]}" (normalized: "${nameNorm}")`);
+      throw notFound(`Cannot resolve token: "${tokens[i]}"`);
     }
 
     parentId = result.id;
@@ -181,7 +183,7 @@ export async function resolvePath(
   }
 
   if (lastId === null) {
-    throw new Error('Path resolution failed');
+    throw notFound('Path resolution failed');
   }
 
   // Step 4: 写入缓存（双写 KV + D1）—— 部分匹配不写缓存
@@ -246,7 +248,7 @@ export async function getLocation(
   }>();
 
   if (!result) {
-    throw new Error(`Location not found: ${id}`);
+    throw notFound(`Location not found: ${id}`);
   }
 
   // 按优先级选择显示名称
@@ -367,7 +369,7 @@ export async function isSubordinate(
     name_ja: string | null;
   }>();
   if (!descLoc) {
-    throw new Error(`Location not found: ${descendantId}`);
+    throw notFound(`Location not found: ${descendantId}`);
   }
 
   // 获取 ancestor 的信息
@@ -380,7 +382,7 @@ export async function isSubordinate(
     name_ja: string | null;
   }>();
   if (!ancLoc) {
-    throw new Error(`Location not found: ${ancestorId}`);
+    throw notFound(`Location not found: ${ancestorId}`);
   }
 
   // 名称获取辅助函数
@@ -445,20 +447,20 @@ export async function resolveHierarchyName(
   lang: string = 'zh',
 ): Promise<number> {
   const trimmed = nameOrId.trim();
-  if (!trimmed) throw new Error('Empty hierarchy name');
+  if (!trimmed) throw invalidParam('Empty hierarchy name');
 
   // 纯数字 → 当作 geonameid 直接使用
   if (/^\d+$/.test(trimmed)) {
     const id = parseInt(trimmed, 10);
     const locStmt = queryLocationById(db, id);
     const loc = await locStmt.first<{ id: number }>();
-    if (!loc) throw new Error(`Location not found: ${id}`);
+    if (!loc) throw notFound(`Location not found: ${id}`);
     // 可选：验证 parent 关系
     if (parentId !== null) {
       const parentStmt = queryParentById(db, id);
       const parent = await parentStmt.first<{ parent_id: number | null }>();
       if (!parent || parent.parent_id !== parentId) {
-        throw new Error(`Location ${id} is not a child of ${parentId}`);
+        throw invalidParam(`Location ${id} is not a child of ${parentId}`);
       }
     }
     return id;
@@ -487,22 +489,23 @@ export async function resolveHierarchyName(
   }
 
   // Step 3: name LIKE 兜底 — 按 lang 过滤，优先精确匹配
+  // LIKE 通配符转义：用户输入的 % _ 按字面量匹配，防探测与索引劣化
   const likeStmt = db
     .prepare(
       `SELECT l.id
        FROM location_names n
        INNER JOIN locations l ON n.location_id = l.id
-       WHERE n.name LIKE ?1 AND n.lang = ?2 AND l.is_active = 1
+       WHERE n.name LIKE ?1 ${SQLITE_LIKE_ESCAPE} AND n.lang = ?2 AND l.is_active = 1
        ORDER BY
          CASE WHEN n.name = ?3 THEN 0 ELSE 1 END,
          n.name ASC
        LIMIT 1`,
     )
-    .bind(`%${trimmed}%`, lang, trimmed);
+    .bind(likeContains(trimmed), lang, trimmed);
   const likeResult = await likeStmt.first<{ id: number }>();
   if (likeResult) return likeResult.id;
 
-  throw new Error(`Cannot resolve: "${trimmed}"`);
+  throw notFound(`Cannot resolve: "${trimmed}"`);
 }
 
 /** D1 单条语句绑定参数上限 100，按 90 分块留余量 */
@@ -552,12 +555,13 @@ export async function searchChildren(
   const qNorm = normalizeSearchTerm(q);
 
   // Step 1: 全局搜索名字匹配的候选（多取一些供过滤）
+  // LIKE 通配符转义：用户输入的 % _ 按字面量匹配，防探测与索引劣化
   const stmt = db
     .prepare(
       `SELECT DISTINCT ln.location_id, ln.name, l.level, l.country_code, l.parent_id
        FROM location_names ln
        INNER JOIN locations l ON ln.location_id = l.id
-       WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2)
+       WHERE (ln.name_norm = ?1 OR ln.name LIKE ?2 ${SQLITE_LIKE_ESCAPE})
          AND ln.lang = ?3
          AND l.is_active = 1
        ORDER BY
@@ -565,7 +569,7 @@ export async function searchChildren(
          ln.name ASC
        LIMIT 50`,
     )
-    .bind(qNorm, `${q}%`, lang);
+    .bind(qNorm, likePrefix(q), lang);
   const result = await stmt.all<{
     location_id: number; name: string; level: string;
     country_code: string | null; parent_id: number | null;

@@ -339,6 +339,9 @@ GET /health
 | `DEFAULT_LANG` | API 默认返回语言 | `zh` |
 | `CACHE_TTL` | KV 缓存过期时间（秒） | `86400` |
 | `HOT_CITIES` | 预热热点城市 | `"北京,上海,东京,New York,London,Paris,Singapore,Sydney"` |
+| `ALLOWED_ORIGINS` | CORS 白名单（逗号分隔）；留空 = 不限制 | 未限制（`*`） |
+| `RATE_LIMIT_MAX` | 单 IP 在限流窗口内的最大请求数（`/geo/*`） | `120` |
+| `RATE_LIMIT_WINDOW_MS` | 限流窗口长度（毫秒） | `60000` |
 
 **自定义默认语言示例：**
 
@@ -349,7 +352,24 @@ DEFAULT_LANG = "en"   # 改为英文
 CACHE_TTL = 86400
 ```
 
-支持的语言代码：`zh`（简体中文）、`en`（英文）、`ja`（日文）、`zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO`（繁体中文）。<parameter name="explanation" string="true">README 增加配置说明章节，说明 DEFAULT_LANG 自定义方式
+支持的语言代码：`zh`（简体中文）、`en`（英文）、`ja`（日文）、`zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO`（繁体中文）。
+
+### 安全
+
+- **速率限制**：`/geo/*` 全部端点按客户端 IP 限流（默认 120 次/分钟），超限返回 `429` 与 `Retry-After` 头。生产环境建议在 `wrangler.toml` 启用 Cloudflare Rate Limiting Binding（配置示例见 `wrangler.toml` 注释），未配置时使用 Worker 内存窗口兜底。
+- **CORS**：默认 `*`（公开读取语义）；配置 `ALLOWED_ORIGINS` 后仅白名单站点可跨域调用。
+- **错误响应**：对外统一返回 `{ "error": true, "code": "<稳定错误码>", "message": "<调用方视角文案>" }`，内部错误细节只进 Workers Logs，不进入响应体。错误码见下表。
+
+### 错误码
+
+| code | HTTP | 含义 |
+|------|------|------|
+| `INVALID_PARAM` | 400 | 参数缺失或格式错误 |
+| `NOT_FOUND` | 404 | 资源不存在（无此地 / 无此 ID） |
+| `AMBIGUOUS_MATCH` | 422 | 地名歧义，无法唯一解析（请提供更精确的路径） |
+| `RATE_LIMITED` | 429 | 触发速率限制 |
+| `INTERNAL_ERROR` | 500 | 内部错误（含数据库故障），细节仅记录在服务端日志 |
+| `SERVICE_UNAVAILABLE` | 503 | 依赖不可用（健康检查失败时） |<parameter name="explanation" string="true">README 增加配置说明章节，说明 DEFAULT_LANG 自定义方式
 
 1. **KV 缓存优先** - 热点路径秒级返回，TTL 24h
 2. **D1 path_cache 双写** - KV miss 时 D1 兜底
