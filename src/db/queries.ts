@@ -7,50 +7,30 @@
  * - 可维护性
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 
 // =============================================
 // 类型定义
+// 说明：本模块只定义「查询结果行」的形状（与 SQL SELECT 列一一对应）；
+// 表结构以 db/migrations/001_init.sql 为唯一真相源，不在此重复声明；
+// 对外响应形状定义在 services/geo.ts（业务层负责投影与多语言 fallback）。
 // =============================================
 
-export interface LocationRow {
-  id: number;
-  parent_id: number | null;
-  level: string;
-  country_code: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  is_active: number;
-}
-
-export interface LocationNameRow {
-  location_id: number;
-  lang: string;
-  name: string;
-  name_norm: string;
-}
-
-export interface PathCacheRow {
-  path_key: string;
-  location_id: number;
-  hit_count: number;
-  updated_at: number;
-}
-
+/** queryChildren 的结果行 */
 export interface ChildResult {
   id: number;
   name: string;
   level: string;
 }
 
-export interface LocationDetail {
+/** queryLocationById 的结果行（locations + 三路 LEFT JOIN 的多语言名称） */
+export interface LocationByIdRow {
   id: number;
   parent_id: number | null;
   level: string;
   country_code: string | null;
   latitude: number | null;
   longitude: number | null;
-  name: string;
   name_zh: string | null;
   name_en: string | null;
   name_ja: string | null;
@@ -101,7 +81,10 @@ export function queryChildren(
  * 获取单个 location 详情（含多语言名称）
  * 命中主键 idx_locations(id) + idx_names_location
  */
-export function queryLocationById(db: D1Database, id: number) {
+export function queryLocationById(
+  db: D1Database,
+  id: number,
+): D1PreparedStatement {
   return db
     .prepare(
       `SELECT 
@@ -213,28 +196,6 @@ export function upsertPathCache(
 }
 
 // =============================================
-// 多语言名称查询
-// =============================================
-
-/**
- * 获取某 location 的特定语言名称
- */
-export function queryNameByLang(
-  db: D1Database,
-  locationId: number,
-  lang: string,
-) {
-  return db
-    .prepare(
-      `SELECT name, name_norm
-       FROM location_names
-       WHERE location_id = ?1 AND lang = ?2
-       LIMIT 1`,
-    )
-    .bind(locationId, lang);
-}
-
-// =============================================
 // 从属关系检查
 // =============================================
 
@@ -252,6 +213,10 @@ export function queryParentById(db: D1Database, id: number) {
     )
     .bind(id);
 }
+
+// =============================================
+// 批量查询（分层批量上溯）
+// =============================================
 
 /**
  * 批量获取多个节点的 parent_id（分层批量上溯用）
@@ -312,29 +277,6 @@ export function queryAncestorChain(db: D1Database, id: number, maxDepth: number)
        ORDER BY c.depth ASC`,
     )
     .bind(id, maxDepth);
-}
-
-// =============================================
-// 批量查询（预热热点城市等场景）
-// =============================================
-
-/**
- * 批量查询多个 location 的名称
- */
-export function queryNamesBatch(
-  db: D1Database,
-  locationIds: number[],
-  lang: string,
-) {
-  const placeholders = locationIds.map(() => '?').join(',');
-  return db
-    .prepare(
-      `SELECT n.location_id, n.name
-       FROM location_names n
-       WHERE n.location_id IN (${placeholders})
-         AND n.lang = ?`,
-    )
-    .bind(...locationIds, lang);
 }
 
 

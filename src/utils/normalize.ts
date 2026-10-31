@@ -7,8 +7,6 @@
  * 本文件只放运行时（查询侧）专用工具，不参与写库。
  */
 
-import { normalizeName } from '../../shared/normalize.mjs';
-
 export {
   ADMIN_SUFFIXES,
   normalizeName,
@@ -71,11 +69,4 @@ export function resolveLangPriority(preferredLang: string): string[] {
 export function isTraditionalChinese(lang: string): boolean {
   const l = lang.toLowerCase();
   return l === 'zh-hant' || l === 'zh-tw' || l === 'zh-hk' || l === 'zh-mo';
-}
-
-/**
- * 批量归一化名称
- */
-export function normalizeNames(names: string[]): string[] {
-  return names.map(normalizeName);
 }

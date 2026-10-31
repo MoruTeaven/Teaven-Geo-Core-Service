@@ -81,8 +81,12 @@ function makeD1(sqlite, failWhen) {
 function makeKV() {
   const store = new Map();
   return {
+    lastPutTtl: undefined,
     async get(key) { return store.has(key) ? store.get(key) : null; },
-    async put(key, value, _opts) { store.set(key, value); },
+    async put(key, value, opts) {
+      this.lastPutTtl = opts?.expirationTtl;
+      store.set(key, value);
+    },
   };
 }
 
@@ -91,7 +95,6 @@ function makeEnv(db, vars = {}) {
     DB: db,
     GEO_CACHE: makeKV(),
     CACHE_TTL: '86400',
-    HOT_CITIES: '',
     DEFAULT_LANG: 'zh',
     ...vars,
   };
@@ -336,6 +339,31 @@ test('/geo/resolve: 正常路径解析不受影响（happy path 回归）', asyn
   assert.equal(res.status, 200);
   assert.equal(res.body.location_id, 1111);
   assert.equal(res.body.cached, false);
+});
+
+test('/geo/resolve: CACHE_TTL 配置真实接线到 KV 写入（回归：此前硬编码）', async () => {
+  const env = await makeWorkerDb({ CACHE_TTL: '77' });
+  const res = await jsonOf(await worker.default.fetch(
+    new Request('http://localhost/geo/resolve?path=' + encodeURIComponent('中国 山东 济南 历下区')), env,
+  ));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.cached, false);
+  assert.equal(env.GEO_CACHE.lastPutTtl, 77, 'KV 写入的 expirationTtl 必须来自 env.CACHE_TTL');
+
+  // 二次请求应命中 KV 缓存
+  const res2 = await jsonOf(await worker.default.fetch(
+    new Request('http://localhost/geo/resolve?path=' + encodeURIComponent('中国 山东 济南 历下区')), env,
+  ));
+  assert.equal(res2.body.cached, true);
+});
+
+test('/geo/resolve: CACHE_TTL 非法值回退默认 86400（KV 下限保护）', async () => {
+  const env = await makeWorkerDb({ CACHE_TTL: '7' });
+  const res = await jsonOf(await worker.default.fetch(
+    new Request('http://localhost/geo/resolve?path=' + encodeURIComponent('中国 山东 济南 历下区')), env,
+  ));
+  assert.equal(res.status, 200);
+  assert.equal(env.GEO_CACHE.lastPutTtl, 86400, '小于 KV 下限 60 的配置回退默认 86400');
 });
 
 test('/geo/resolve: 无此地 → 404；地名歧义 → 422 AMBIGUOUS_MATCH', async () => {

@@ -20,13 +20,14 @@
 
 import { AutoRouter, json } from 'itty-router';
 import { getChildren, resolvePath, getLocation, getAncestors, isSubordinate, resolveHierarchyName, searchChildren } from './services/geo';
-import { corsPreflight } from './utils/response';
 import { normalizeSearchTerm } from './utils/normalize';
 import { toApiError } from './utils/errors';
 import { likePrefix, SQLITE_LIKE_ESCAPE } from './utils/like';
+import { parseCacheTtl } from './utils/cache';
 import {
   parseAllowedOrigins,
   resolveAllowOrigin,
+  corsPreflight,
   CORS_ALLOW_METHODS,
   CORS_ALLOW_HEADERS,
 } from './utils/cors';
@@ -34,7 +35,7 @@ import { checkRateLimit, getClientIp } from './middleware/rateLimit';
 
 // itty-router v5 的 json(data, init) 要求 init 为 ResponseInit 对象
 // 封装一个接受纯 statusCode 的便捷函数
-const respond = (data: any, status: number = 200) => json(data, { status });
+const respond = (data: unknown, status: number = 200) => json(data, { status });
 
 // =============================================
 // 环境类型
@@ -43,8 +44,8 @@ const respond = (data: any, status: number = 200) => json(data, { status });
 export interface Env {
   DB: D1Database;
   GEO_CACHE: KVNamespace;
+  /** KV 缓存过期秒数（wrangler.toml [vars] 配置；KV 下限 60，非法值回退 86400） */
   CACHE_TTL: string;
-  HOT_CITIES: string;
   DEFAULT_LANG: string;
   /** CORS 白名单（逗号分隔）；未配置 = *（公开读取） */
   ALLOWED_ORIGINS?: string;
@@ -169,7 +170,7 @@ async function handleResolve(req: Request, env: Env, path: string, lang: string)
   }
 
   try {
-    const result = await resolvePath(env.DB, env.GEO_CACHE, path, lang);
+    const result = await resolvePath(env.DB, env.GEO_CACHE, path, lang, parseCacheTtl(env.CACHE_TTL));
     return respond(result);
   } catch (e) {
     // ApiError（无此地 404 / 歧义 422 / 参数 400）按契约透出；

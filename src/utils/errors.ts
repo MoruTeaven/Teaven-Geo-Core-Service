@@ -15,7 +15,18 @@
  * - 503 SERVICE_UNAVAILABLE 依赖不可用（health 检查失败），客户端可稍后重试
  */
 
-import type { ApiErrorCode } from '../types';
+/**
+ * 稳定错误码（对外契约，本模块为唯一定义处）
+ * 原 src/types.ts 中同名定义已收敛至此——错误契约与错误码定义同源，
+ * 避免两处漂移；新增错误码请同时更新上方注释与 README 错误码表。
+ */
+export type ApiErrorCode =
+  | 'INVALID_PARAM'       // 400 客户端参数错误
+  | 'NOT_FOUND'           // 404 资源不存在
+  | 'AMBIGUOUS_MATCH'     // 422 语义歧义（地名多候选无法唯一解析）
+  | 'RATE_LIMITED'        // 429 触发速率限制
+  | 'INTERNAL_ERROR'      // 500 未知内部错误（细节仅进日志）
+  | 'SERVICE_UNAVAILABLE'; // 503 依赖不可用
 
 export class ApiError extends Error {
   readonly code: ApiErrorCode;

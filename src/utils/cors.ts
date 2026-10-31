@@ -36,3 +36,16 @@ export function resolveAllowOrigin(
   if (!origin) return null;
   return allowed.includes(origin) ? origin : null;
 }
+
+/**
+ * OPTIONS 预检响应
+ * 仅预检专用头；Allow-Origin/Methods/Headers 由 index.ts 的 applyCorsHeaders 统一注入
+ */
+export function corsPreflight(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
