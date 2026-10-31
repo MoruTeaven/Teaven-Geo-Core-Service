@@ -12,11 +12,12 @@
     "db:seed": "node scripts/import-geoname.js",
     "kv:create": "wrangler kv:namespace create GEO_CACHE",
     "typecheck": "tsc --noEmit",
-    "build:test": "esbuild src/services/geo.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/geo.cjs && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/index.cjs && esbuild src/utils/errors.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/errors.cjs && esbuild src/utils/like.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/like.cjs && esbuild src/utils/cors.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/cors.cjs && esbuild src/middleware/rateLimit.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/rateLimit.cjs",
+    "build:test": "esbuild src/services/geo.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/geo.cjs && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/index.cjs && esbuild src/utils/errors.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/errors.cjs && esbuild src/utils/like.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/like.cjs && esbuild src/utils/cors.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/cors.cjs && esbuild src/middleware/rateLimit.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/rateLimit.cjs && esbuild src/utils/s2t.ts --bundle --platform=node --format=cjs --outfile=dist/test-build/s2t.cjs",
     "test": "npm run build:test && node --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
-    "itty-router": "^5.0.18"
+    "itty-router": "^5.0.18",
+    "opencc-js": "^1.4.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
