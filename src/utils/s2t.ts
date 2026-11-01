@@ -11,9 +11,15 @@
  * opencc-js 按「词组优先、单字回退」转换，词组词典（STPhrases）保证
  * 皇后→皇后、老板→老闆、木板→木板 这类按词义的区分。
  *
- * 体积与兼容性（2026-10 实测）：opencc-js/cn2t 子入口（仅含简→繁词典）
- * esbuild bundle 1.99MB / gzip 0.49MB，无任何 Node API，Workers 免费计划
- * 上限（gzip 3MB）内。许可证：代码 MIT + 词典数据 Apache-2.0，均可商用。
+ * 体积与兼容性（2026-11 实测）：opencc-js/cn2t 子入口（仅含简→繁词典）
+ * esbuild bundle 2.10MB / gzip 0.494MB，无任何 Node API；wrangler deploy
+ * --dry-run 实测 Total Upload 2089.70 KiB / gzip 515.53 KiB，Workers 免费
+ * 计划上限（gzip 3MB）内。许可证：代码 MIT + 词典数据 Apache-2.0，均可商用。
+ *
+ * 为什么不用 chinese-conv（4.0.0，MIT，体积更小 582KB）：它只有单字映射级
+ * 语义，在本 BUG 的 10 例真实地名上错 2 例（后里區→後裡區、皇后大道→皇後
+ * 大道），一对多也错（老板→老板、公布→公布、朴素→朴素、公里→公裡）。
+ * 选型以正确性优先，勿为省体积换回该库。
  */
 import * as OpenCC from 'opencc-js/cn2t';
 
