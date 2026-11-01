@@ -45,9 +45,8 @@ export function toTraditional(text: string): string {
 
 /**
  * 判断是否为繁体中文请求
- * 支持: zh-Hant, zh-TW, zh-HK, zh-MO
+ *
+ * 唯一实现在 utils/normalize.ts（语言标签判定属于归一化范畴），此处再导出
+ * 以保持 s2t 模块自洽、兼容既有调用方。曾被复制成两份且口径不一致。
  */
-export function isTraditionalChinese(lang: string): boolean {
-  const l = lang.toLowerCase();
-  return l === 'zh-hant' || l === 'zh-tw' || l === 'zh-hk' || l === 'zh-mo' || l === 'hant';
-}
+export { isTraditionalChinese } from './normalize';

@@ -64,9 +64,13 @@ export function resolveLangPriority(preferredLang: string): string[] {
 }
 
 /**
- * 判断是否为繁体中文请求
+ * 判断是否为繁体中文请求（语言标签判定的唯一实现）
+ *
+ * 支持 zh-Hant / zh-TW / zh-HK / zh-MO 及裸 hant 标签。
+ * s2t.ts 曾另有一份同义实现（且漏了 hant），导致两条判定口径分叉；
+ * 现统一在此，s2t.ts 仅再导出，避免再次分叉。
  */
 export function isTraditionalChinese(lang: string): boolean {
   const l = lang.toLowerCase();
-  return l === 'zh-hant' || l === 'zh-tw' || l === 'zh-hk' || l === 'zh-mo';
+  return l === 'zh-hant' || l === 'zh-tw' || l === 'zh-hk' || l === 'zh-mo' || l === 'hant';
 }
