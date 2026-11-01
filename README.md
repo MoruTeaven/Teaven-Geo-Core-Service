@@ -434,6 +434,13 @@ teaven-geo-core-service/
 本项目使用 [GeoNames](https://www.geonames.org/) 地理数据，遵循
 [Creative Commons Attribution 4.0 (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) 协议。
 
+### 第三方依赖
+
+- 简繁转换使用 [opencc-js](https://github.com/nk2028/opencc-js)（The nk2028 Project）：
+  代码 MIT、词典数据（opencc-data）Apache License 2.0，均为宽松协议、允许商用。
+  词典经其 `cn2t` 子入口随构建打包，版权与许可文本见
+  `node_modules/opencc-js/LICENSE` 与 `node_modules/opencc-js/LICENSES/Apache-2.0.txt`。
+
 ## 作者
 
 - **主页**: [moruteaven.com](https://moruteaven.com)
